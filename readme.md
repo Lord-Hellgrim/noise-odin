@@ -1,0 +1,1 @@
+Simple and feature incomplete (but working?) implementation of the Noise Protocol (https://noiseprotocol.org/)
