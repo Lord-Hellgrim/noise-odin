@@ -699,27 +699,24 @@ array32_from_slice :: proc(slice: []u8) -> [32]u8 {
 }
 
 Connection :: struct {
-    c1: CipherState,
-    c2: CipherState,
+    initiator_cipherstate: CipherState,
+    responder_cipherstate: CipherState,
     stream: net.TCP_Socket,
     peer: string,
+    initiator: bool,
 }
 
-Cstate :: enum {
-    C1,
-    C2
-}
 
-__connection_send :: proc(self: ^Connection, message: []u8, state: Cstate) -> NoiseError {
+connection_send :: proc(self: ^Connection, message: []u8) -> NoiseError {
         buffer := make_dynamic_array([dynamic]u8)
         defer delete_dynamic_array(buffer)
         ciphertext : []u8
-        switch state {
-            case .C1: {
-                ciphertext = cipherstate_EncryptWithAd(&self.c1, nil, message)
+        switch self.initiator {
+            case true: {
+                ciphertext = cipherstate_EncryptWithAd(&self.initiator_cipherstate, nil, message)
             }
-            case .C2: {
-                ciphertext = cipherstate_EncryptWithAd(&self.c2, nil, message)
+            case false: {
+                ciphertext = cipherstate_EncryptWithAd(&self.responder_cipherstate, nil, message)
             }
         }
         ciphertext_len := to_le_bytes(u64(len(ciphertext)))
@@ -729,7 +726,7 @@ __connection_send :: proc(self: ^Connection, message: []u8, state: Cstate) -> No
         return .NoError
     }
 
-__connection_receive :: proc(self: ^Connection, state: Cstate) -> ([]u8, NoiseError) {
+connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseError) {
         size_buffer : [8]u8
         net.recv_tcp(self.stream, size_buffer[:])
     
@@ -753,33 +750,17 @@ __connection_receive :: proc(self: ^Connection, state: Cstate) -> ([]u8, NoiseEr
         }
 
         decrypted_data: []u8
-        switch state {
-            case .C1: {
-                decrypted_data, _ = cipherstate_DecryptWithAd(&self.c1, nil, data[:])
+        switch self.initiator {
+            case true: {
+                decrypted_data, _ = cipherstate_DecryptWithAd(&self.initiator_cipherstate, nil, data[:])
             }
-            case .C2: {
-                decrypted_data, _ = cipherstate_DecryptWithAd(&self.c2, nil, data[:])
+            case false: {
+                decrypted_data, _ = cipherstate_DecryptWithAd(&self.responder_cipherstate, nil, data[:])
             }
 
         };
 
         return decrypted_data, .NoError
-    }
-
-    connection_SEND_C1 :: proc(self: ^Connection, message: []u8) -> NoiseError {
-        return __connection_send(self, message, Cstate.C1)
-    }
-
-    connection_SEND_C2 :: proc(self: ^Connection, message: []u8) -> NoiseError {
-        return __connection_send(self, message, Cstate.C2)
-    }
-
-    connection_RECEIVE_C1 :: proc(self: ^Connection) -> ([]u8, NoiseError) {
-        return __connection_receive(self, Cstate.C1)
-    }
-
-    connection_RECEIVE_C2 :: proc(self: ^Connection) -> ([]u8, NoiseError) {
-        return __connection_receive(self, Cstate.C2)
     }
 
 
@@ -808,18 +789,18 @@ initiate_connection :: proc(address: string) -> (Connection, NoiseError) {
     switch res1 {
         case res1.?: {
             return Connection {
-                    c1 = res1.?,
-                    c2 = res2.?,
+                    initiator_cipherstate = res1.?,
+                    responder_cipherstate = res2.?,
                     stream = stream,
                     peer = ""
                 }, .NoError
             }
         case nil: {
-            return Connection{c1 = cipherstate_InitializeKey(zeroslice), c2 = cipherstate_InitializeKey(zeroslice), stream = net.TCP_Socket(0), peer = ""}, .Io
+            return Connection{initiator_cipherstate = cipherstate_InitializeKey(zeroslice), responder_cipherstate = cipherstate_InitializeKey(zeroslice), stream = net.TCP_Socket(0), peer = ""}, .Io
         } 
     }
 
-    return Connection{c1 = cipherstate_InitializeKey(zeroslice), c2 = cipherstate_InitializeKey(zeroslice), stream = net.TCP_Socket(0), peer = ""}, .WrongState
+    return Connection{initiator_cipherstate = cipherstate_InitializeKey(zeroslice), responder_cipherstate = cipherstate_InitializeKey(zeroslice), stream = net.TCP_Socket(0), peer = ""}, .WrongState
 }
 
 ESTABLISH_CONNECTION :: proc(stream: net.TCP_Socket, s: KeyPair) -> (Connection, NoiseError) {
@@ -857,8 +838,8 @@ ESTABLISH_CONNECTION_STEP_3 :: proc(stream: net.TCP_Socket, handshakestate: ^Han
     switch res1 {
         case res1.?:  {
             return Connection {
-                c1 = res1.?,
-                c2 = res2.?,
+                initiator_cipherstate = res1.?,
+                responder_cipherstate = res2.?,
                 stream = stream,
                 peer = ""
             }, .NoError
@@ -878,7 +859,7 @@ extend_from_slice :: proc(array: ^[dynamic]u8, slice: []u8) {
 
 connection_nullcon :: proc() -> Connection {
     zeroslice : [HASHLEN]u8
-    return Connection{c1 = cipherstate_InitializeKey(zeroslice), c2 = cipherstate_InitializeKey(zeroslice), stream = net.TCP_Socket(0), peer = ""}
+    return Connection{initiator_cipherstate = cipherstate_InitializeKey(zeroslice), responder_cipherstate = cipherstate_InitializeKey(zeroslice), stream = net.TCP_Socket(0), peer = ""}
 }
 
 /// Creates a uintptr from a &[u8] of length 8. Panics if len is different than 8.
@@ -974,3 +955,15 @@ concat_bytes :: proc(b1: []u8, b2: []u8) -> []u8 {
     copy(output[len(b1):], b2)
     return output
 }
+
+slices_do_not_overlap :: proc(a: []$A, b: []$B) -> bool {
+    a_address := transmute(u64)raw_data(a)
+    b_address := transmute(u64)raw_data(b)
+
+    if a_address > b_address {
+        return b_address + u64(len(b)*size_of(B)) < a_address
+    } else {
+        return a_address + u64(len(a)*size_of(A)) <= b_address
+    }
+}
+
