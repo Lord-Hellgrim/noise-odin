@@ -6,6 +6,7 @@ import "core:crypto/aead"
 import "core:crypto/sha2"
 
 import "core:slice"
+import "core:strings"
 
 import "core:simd"
 
@@ -201,6 +202,102 @@ HKDF :: proc(chaining_key: [HASHLEN]u8, input_key_material: []u8) -> ([HASHLEN]u
 
     return output1, output2, output3
 } 
+
+DhType :: enum {
+    x25519,
+
+}
+
+CipherType :: enum {
+    AES256gcm,
+}
+
+HashType :: enum {
+    SHA512,
+}
+
+HandshakePattern :: enum {
+    XX,
+    NK
+}
+
+@(private)
+PATTERN_XX : [][]Token = {
+                {.e},
+                {.e, .ee, .s, .es},
+                {.s, .se}
+            }
+
+@(private)
+PATTERN_NK : [][]Token = {
+                {.s},
+                {.e, .es},
+                {.e, .ee}
+            }
+
+
+
+Protocol :: struct {
+    handshake_pattern: [][]Token,
+    dh: DhType,
+    cipher: CipherType,
+    hash: HashType,
+}
+
+@(private)
+DEFAULT_PROTOCOL := Protocol {
+    handshake_pattern = PATTERN_XX,
+    dh = .x25519,
+    cipher = .AES256gcm,
+    hash = .SHA512
+}
+
+@(private)
+ERROR_PROTOCOL := Protocol {
+    handshake_pattern = {},
+    dh = nil,
+    cipher = nil,
+    hash = nil
+}
+
+parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseError) {
+    // Default protocol string "Noise_XX_25519_AESGCM_SHA512"
+
+    if len(protocol_string) > 50 {
+        return ERROR_PROTOCOL, .WrongState
+    }
+
+    protocol : Protocol
+    split := strings.split(protocol_string, "_")
+    defer delete(split)
+    if len(split) != 5 {
+        return ERROR_PROTOCOL, .WrongState
+    }
+
+    switch split[1] {
+        case "XX": protocol.handshake_pattern = PATTERN_XX
+        case "NK": protocol.handshake_pattern = PATTERN_NK
+        case: return ERROR_PROTOCOL, .WrongState
+    }
+
+    switch split[2] {
+        case "25519": protocol.dh = .x25519
+        case: return ERROR_PROTOCOL, .WrongState
+    }
+
+    switch split[3] {
+        case "AESGCM": protocol.cipher = .AES256gcm
+        case: return ERROR_PROTOCOL, .WrongState
+    }
+
+    switch split[4] {
+        case "SHA512": protocol.hash = .SHA512
+        case: return ERROR_PROTOCOL, .WrongState
+    }
+
+    return protocol, .NoError
+
+}
 
 
 Token :: enum {
