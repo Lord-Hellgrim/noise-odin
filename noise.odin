@@ -99,61 +99,68 @@ DH :: proc(key_pair: KeyPair, public_key: [HASHLEN]u8) -> [32]u8 {
 } 
 
 
+CryptoBuffer :: struct {
+    iv: [12]u8,
+    main_body: []u8,
+    tag: [16]u8,
+}
+
 /// Encrypts plaintext using the cipher key k of 32 bytes and an 8-byte unsigned integer nonce n which must be unique for the key k. 
 /// Returns the ciphertext. Encryption must be done with an "AEAD" encryption mode with the associated data ad 
 /// (using the terminology from [1]) and returns a ciphertext that is the same size as the plaintext plus 16 bytes for authentication data. 
 /// The entire ciphertext must be indistinguishable from random if the key is secret 
 /// (note that this is an additional requirement that isn't necessarily met by all AEAD schemes).
-ENCRYPT :: proc(k: [HASHLEN]u8, n: u64, ad: []u8, plaintext: []u8) -> ([]u8, NoiseError) {
+ENCRYPT :: proc(k: [HASHLEN]u8, n: u64, ad: []u8, plaintext: []u8, allocator := context.allocator) -> (CryptoBuffer, NoiseError) {
+
+    plaintext := plaintext
 
     k := k
     tag : [16]u8
-    
-    ciphertext_buffer := make_slice([]byte, len(plaintext)+28, context.temp_allocator)
+
+    ciphertext : CryptoBuffer
 
     ctx : aead.Context
     iv := nonce_from_u64(n)
     crypto.rand_bytes(iv[:])
-    copy_slice(ciphertext_buffer[0:12], iv[:])
-
+    
     aead.init(&ctx, aead.Algorithm.AES_GCM_256, k[:])
-    aead.seal_ctx(&ctx, ciphertext_buffer[12:len(ciphertext_buffer)-16], tag[:], iv[:], ad, plaintext)
+    aead.seal_ctx(&ctx, plaintext, tag[:], iv[:], ad, plaintext)
+    
+    ciphertext.iv = iv
+    ciphertext.tag = tag
+    ciphertext.main_body = plaintext
 
-    copy_slice(ciphertext_buffer[len(ciphertext_buffer)-16:], tag[:])
-
-    return ciphertext_buffer, .NoError
+    return ciphertext, .NoError
 }
 
 
 /// Decrypts ciphertext using a cipher key k of 32 bytes, an 8-byte unsigned integer nonce n,
 /// and associated data ad. Returns the plaintext, unless authentication fails, 
 /// in which case an error is signaled to the caller.
-DECRYPT :: proc(k: [HASHLEN]u8, n: u64, ad: []u8, ciphertext: []u8) -> ([]u8, NoiseError) {
+DECRYPT :: proc(k: [HASHLEN]u8, n: u64, ad: []u8, ciphertext: CryptoBuffer) -> ([]u8, NoiseError) {
     
     k := k
-
-    plaintext_buffer := make_slice([]byte, len(ciphertext) - 28)
     
     ctx : aead.Context
-    iv := nonce_from_u64(n)
-    copy_slice(iv[:], ciphertext[0:12])
-    tag : [16]u8
-    copy_slice(tag[:], ciphertext[len(ciphertext)-16:])
+    iv := ciphertext.iv
+    tag := ciphertext.tag
 
     aead.init(&ctx, aead.Algorithm.AES_GCM_256, k[:])
-    if aead.open_ctx(&ctx, plaintext_buffer, iv[:], ad, ciphertext[12:len(ciphertext)-16], tag[:]) {
-        return plaintext_buffer, .NoError
+    if aead.open_ctx(&ctx, ciphertext.main_body, iv[:], ad, ciphertext.main_body, tag[:]) {
+        return ciphertext.main_body, .NoError
     } else {
-        return plaintext_buffer, .WrongState
+        return ciphertext.main_body, .WrongState
     }
 }
 
 /// Hashes some arbitrary-length data with a collision-resistant cryptographic hash function and returns an output of HASHLEN bytes.
-HASH :: proc(data: []u8) -> [HASHLEN]u8 {
+HASH :: proc(data: ..[]u8) -> [HASHLEN]u8 {
     ctx : sha2.Context_512
     sha2.init_512(&ctx)
 
-    sha2.update(&ctx, data)
+    for datum in data {
+        sha2.update(&ctx, datum)
+    }
     hash : [HASHLEN]u8
     sha2.final(&ctx, hash[:])
 
@@ -179,8 +186,8 @@ HMAC_HASH :: proc(K: [HASHLEN]u8, text: []u8) -> [HASHLEN]u8 {
     temp1 := array_xor(new_K, IPAD)
     temp2 := array_xor(new_K, OPAD)
 
-    inner: [HASHLEN]u8 = HASH(concat_bytes(temp1[:], text));
-    outer: [HASHLEN]u8 = HASH(concat_bytes(temp2[:], inner[:]));
+    inner: [HASHLEN]u8 = HASH(temp1[:], text);
+    outer: [HASHLEN]u8 = HASH(temp2[:], inner[:]);
     return outer
 }
 
@@ -356,25 +363,25 @@ cipherstate_SetNonce :: proc(self: ^CipherState, nonce: u64) {
 }
 
 ///If k is non-empty returns ENCRYPT(k, n++, ad, plaintext). Otherwise returns plaintext.
-cipherstate_EncryptWithAd :: proc(self: ^CipherState, ad: []u8, plaintext: []u8) -> []u8 {
+cipherstate_EncryptWithAd :: proc(self: ^CipherState, ad: []u8, plaintext: []u8) -> CryptoBuffer {
     if cipherstate_HasKey(self) {
         temp, encrypt_error := ENCRYPT(self.k, self.n, ad, plaintext)
         self.n += 1;
         return temp
     } else {
-        return plaintext
+        return CryptoBuffer {main_body = plaintext}
     }
 }
 
 /// If k is non-empty returns DECRYPT(k, n++, ad, ciphertext). Otherwise returns ciphertext. 
 /// If an authentication failure occurs in DECRYPT() then n is not incremented and an error is signaled to the caller.
-cipherstate_DecryptWithAd :: proc(self: ^CipherState, ad: []u8, ciphertext: []u8) -> ([]u8, NoiseError) {
+cipherstate_DecryptWithAd :: proc(self: ^CipherState, ad: []u8, ciphertext: CryptoBuffer) -> ([]u8, NoiseError) {
     if cipherstate_HasKey(self) {
         plaintext, decrypt_error := DECRYPT(self.k, self.n, ad, ciphertext)
         self.n += 1;
         return plaintext, decrypt_error
     } else {
-        return ciphertext, .NoError
+        return ciphertext.main_body, .NoError
     }
 }
 
@@ -418,8 +425,15 @@ symmetricstate_InitializeSymmetric :: proc(protocol_name: string) -> SymmetricSt
 }
 
 /// Sets h = HASH(h || data).
-symmetricstate_MixHash :: proc(self: ^SymmetricState, data: []u8) {
-    self.h = HASH(concat_bytes(self.h[:], data))
+symmetricstate_MixHash :: proc(self: ^SymmetricState, data: ..[]u8, ) {
+
+    if len(data) == 1 {
+        self.h = HASH(self.h[:], data[0])
+    } else if len(data) == 2 {
+        self.h = HASH(self.h[:], data[0], data[1])
+    } else if len(data) == 3 {
+        self.h = HASH(self.h[:], data[0], data[1], data[2])
+    }
 }
 
 ///     : Executes the following steps:
@@ -456,17 +470,18 @@ symmetricstate_GetHandshakeHash :: proc(self: ^SymmetricState) -> [HASHLEN]u8 {
 
 /// Sets ciphertext = EncryptWithAd(h, plaintext), calls MixHash(ciphertext), and returns ciphertext. 
 /// Note that if k is empty, the EncryptWithAd() call will set ciphertext equal to plaintext.
-symmetricstate_EncryptAndHash :: proc(self:  ^SymmetricState, plaintext: []u8) -> []u8{
+symmetricstate_EncryptAndHash :: proc(self:  ^SymmetricState, plaintext: []u8) -> CryptoBuffer{
     ciphertext := cipherstate_EncryptWithAd(&self.cipherstate, self.h[:], plaintext)
-    symmetricstate_MixHash(self, ciphertext)
+    symmetricstate_MixHash(self, ciphertext.iv[:], ciphertext.main_body, ciphertext.tag[:])
     return ciphertext
 }
 
 /// Sets plaintext = DecryptWithAd(h, ciphertext), calls MixHash(ciphertext), and returns plaintext. 
 /// Note that if k is empty, the DecryptWithAd() call will set plaintext equal to ciphertext.
-symmetricstate_DecryptAndHash :: proc(self:  ^SymmetricState, ciphertext: []u8) -> ([]u8, NoiseError) {
+symmetricstate_DecryptAndHash :: proc(self:  ^SymmetricState, ciphertext: CryptoBuffer) -> ([]u8, NoiseError) {
+    ciphertext := ciphertext
     result, decrypt_error := cipherstate_DecryptWithAd(&self.cipherstate, self.h[:], ciphertext)
-    symmetricstate_MixHash(self, ciphertext)
+    symmetricstate_MixHash(self, ciphertext.iv[:], ciphertext.main_body, ciphertext.tag[:])
     return result, .NoError
 }
 
@@ -571,7 +586,9 @@ handshakestate_WriteMessage :: proc(self: ^HandshakeState, message_buffer: net.T
             }
             case .s: {
                 temp := symmetricstate_EncryptAndHash(&self.symmetricstate, self.s.public_key[:])
-                net.send_tcp(message_buffer, temp)
+                net.send_tcp(message_buffer, temp.iv[:])
+                net.send_tcp(message_buffer, temp.main_body)
+                net.send_tcp(message_buffer, temp.tag[:])
             }
             case .ee: {
                 symmetricstate_MixKey(&self.symmetricstate, DH(self.e, self.re))
@@ -649,7 +666,8 @@ handshakestate_ReadMessage :: proc(self: ^HandshakeState, message: net.TCP_Socke
                 if cipherstate_HasKey(&self.symmetricstate.cipherstate) {
                     rs : [DHLEN+16]u8
                     net.recv_tcp(message, rs[:])
-                    temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs[:])
+                    rs_buffer := cryptobuffer_from_slice(rs[:])
+                    temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
                     new_rs := array32_from_slice(temp[:])
                     if self.rs == zeroslice {
                         self.rs = new_rs
@@ -710,7 +728,7 @@ Connection :: struct {
 connection_send :: proc(self: ^Connection, message: []u8) -> NoiseError {
         buffer := make_dynamic_array([dynamic]u8)
         defer delete_dynamic_array(buffer)
-        ciphertext : []u8
+        ciphertext : CryptoBuffer
         switch self.initiator {
             case true: {
                 ciphertext = cipherstate_EncryptWithAd(&self.initiator_cipherstate, nil, message)
@@ -719,10 +737,12 @@ connection_send :: proc(self: ^Connection, message: []u8) -> NoiseError {
                 ciphertext = cipherstate_EncryptWithAd(&self.responder_cipherstate, nil, message)
             }
         }
-        ciphertext_len := to_le_bytes(u64(len(ciphertext)))
-        extend_from_slice(&buffer, ciphertext_len[:])
-        extend_from_slice(&buffer, ciphertext[:])
-        net.send_tcp(self.stream, buffer[:])
+        ciphertext_len := to_le_bytes(u64(len(ciphertext.main_body) + 28))
+        // extend_from_slice(&buffer, ciphertext_len[:])
+        // extend_from_slice(&buffer, ciphertext[:])
+        net.send_tcp(self.stream, ciphertext_len[:])
+        net.send_tcp(self.stream, ciphertext.main_body)
+        net.send_tcp(self.stream, ciphertext.tag[:])
         return .NoError
     }
 
@@ -749,13 +769,15 @@ connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseError) {
             total_read += u64(bytes_received)
         }
 
+        data_buffer := cryptobuffer_from_slice(data[:])
+
         decrypted_data: []u8
         switch self.initiator {
             case true: {
-                decrypted_data, _ = cipherstate_DecryptWithAd(&self.initiator_cipherstate, nil, data[:])
+                decrypted_data, _ = cipherstate_DecryptWithAd(&self.initiator_cipherstate, nil, data_buffer)
             }
             case false: {
-                decrypted_data, _ = cipherstate_DecryptWithAd(&self.responder_cipherstate, nil, data[:])
+                decrypted_data, _ = cipherstate_DecryptWithAd(&self.responder_cipherstate, nil, data_buffer)
             }
 
         };
@@ -876,20 +898,21 @@ u64_from_be_slice :: proc(slice: []u8) -> u64 {
     return l
 }
 
-
-str_to_slice :: proc(s: string) -> []byte {
-    return transmute([]byte)s
-}
-
-slice_to_str :: proc(s: []byte) -> (string, bool) {
-    output := transmute(string)s
-    if utf8.valid_string(output) {
-        return output, true
-    } else {
-        return output, false
+cryptobuffer_from_slice :: proc(slice: []u8) -> CryptoBuffer {
+    length := len(slice)
+    return CryptoBuffer{
+        iv = {slice[0], slice[1], slice[2], slice[3],
+                slice[4], slice[5], slice[6], slice[7], 
+                slice[8], slice[9], slice[10], slice[11]
+            },
+        main_body = slice[12:length],
+        tag = {slice[length +0], slice[length +1], slice[length +2], slice[length +3],
+                slice[length +4], slice[length +5], slice[length +6], slice[length +7],
+                slice[length +8], slice[length +9], slice[length +10],slice[length +11],
+                slice[length +12],slice[length +13],slice[length +14],slice[length +15],
+            },
     }
 }
-
 
 to_be_bytes :: proc(n: u64) -> [8]u8 {
     n0 := u8(n >> 0)

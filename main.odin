@@ -7,6 +7,7 @@ import "core:crypto"
 import "core:slice"
 import "core:strings"
 import "core:time"
+import "core:net"
 
 test_u64_from_slice :: proc() {
     le_num :u64 = 0x123456
@@ -58,19 +59,29 @@ testing_copy_vs_zero_copy :: proc() {
 
 }
 
-main :: proc() {
-    // k : [32]u8
-    // n : u64 = 5
-    // ad := str_to_slice("Double check me!")
-    // unencrypted := str_to_slice("This is an unencrypted block of text that is longer than 128 bits!!!")
-    // buffer := unencrypted
-    // encrypted, enc_error := ENCRYPT(k, n, ad, buffer)
-    // decrypted, dec_error := DECRYPT(k, n, ad, encrypted)
-    // assert(slice.equal(unencrypted, decrypted))
+when ODIN_OS == .Linux {
+    main :: proc() {
+        address := net.parse_ip4_address("127.0.0.1")
+        endpoint := net.Endpoint{address = address, port = 3001}
+        listener := net.listen_tcp(address)
+        connection, status := ESTABLISH_CONNECTION()
+        
+    
+    }
+} else when ODIN_OS == .Windows {
+    main :: proc() {
+            // k : [32]u8
+            // n : u64 = 5
+            // ad := str_to_slice("Double check me!")
+            // unencrypted := str_to_slice("This is an unencrypted block of text that is longer than 128 bits!!!")
+            // backup := slice.clone(unencrypted)
+            // encrypted, enc_error := ENCRYPT(k, n, ad, unencrypted)
+            // decrypted, dec_error := DECRYPT(k, n, ad, encrypted)
+            // assert(slice.equal(backup, decrypted))
 
-    // test_u64_from_slice()
+            testing_copy_vs_zero_copy()
 
-    // fmt.println("SUCCESS!")
+            // fmt.println("SUCCESS!")
 
-
+    }
 }
