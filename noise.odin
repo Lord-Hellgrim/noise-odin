@@ -405,7 +405,8 @@ cipherstate_Rekey :: proc(self: ^CipherState) {
 symmetricstate_InitializeSymmetric :: proc(protocol_name: string) -> SymmetricState {
     zeroslice : [HASHLEN]u8
     if len(protocol_name) < 32 {
-        protocol_name_bytes := zeropad32(str_to_slice(protocol_name))
+        protocol_name_bytes : [32]u8
+        copy(protocol_name_bytes[:], protocol_name[:])
         h := HASH(protocol_name_bytes[:]);
         cipherstate := cipherstate_InitializeKey(zeroslice);
         return SymmetricState {
@@ -414,7 +415,8 @@ symmetricstate_InitializeSymmetric :: proc(protocol_name: string) -> SymmetricSt
             h = h,
         }
     } else {
-        h := HASH(str_to_slice(protocol_name));
+
+        h := HASH(transmute([]u8)protocol_name);
         cipherstate := cipherstate_InitializeKey(zeroslice);
         return SymmetricState {
             cipherstate = cipherstate,
