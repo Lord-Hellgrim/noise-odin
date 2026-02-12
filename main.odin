@@ -1,7 +1,7 @@
 package noise
 
 import "core:crypto/aead"
-import "core:os/os2"
+import "core:os"
 import "core:fmt"
 import "core:crypto"
 import "core:slice"
@@ -25,8 +25,9 @@ when ODIN_OS == .Linux {
     main :: proc() {
         message := make([]u8, 200)
         message = {3}
-        connection, _ := initiate_connection("127.0.0.1:3001")
+        connection, connection_error := initiate_connection("127.0.0.1:3001")
+        fmt.println(connection_error)
         connection_send(&connection, message)
-        
+
     }
 }

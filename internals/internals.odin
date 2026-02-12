@@ -21,7 +21,7 @@ import "core:unicode/utf8"
 /// A constant specifying the size in bytes of public keys and DH outputs. For security reasons, DHLEN must be 32 or greater.
 DHLEN : uintptr :  32;
 /// A constant specifying the size in bytes of the hash output. Must be 32 or 64.
-HASHLEN: uintptr : 32;
+HASHLEN: uintptr : 64;
 
 /// A constant specifying the size in bytes that the hash function uses internally to divide its input for iterative processing. 
 /// This is needed to use the hash function with HMAC (BLOCKLEN is B in [3]).
@@ -36,13 +36,13 @@ PROTOCOL_NAME :: "Noise_NK_25519_AESGCM_SHA512";
 
 
 KeyPair :: struct {
-    public_key: [HASHLEN]u8,
-    private_key: [HASHLEN]u8,
+    public_key: [DHLEN]u8,
+    private_key: [DHLEN]u8,
 }
 
 keypair_empty :: proc() -> KeyPair {
-    public : [HASHLEN]u8
-    private: [HASHLEN]u8
+    public : [DHLEN]u8
+    private: [DHLEN]u8
     return KeyPair {
         public_key = public, 
         private_key = private,
@@ -51,10 +51,10 @@ keypair_empty :: proc() -> KeyPair {
 }
 
 keypair_random :: proc() -> KeyPair {
-    private_key: [HASHLEN]u8;
+    private_key: [DHLEN]u8;
     crypto.rand_bytes(private_key[:])
 
-    public_key : [HASHLEN]u8;
+    public_key : [DHLEN]u8;
     x25519.scalarmult_basepoint(public_key[:], private_key[:])
 
     return KeyPair {
@@ -88,12 +88,12 @@ GENERATE_KEYPAIR :: proc() -> KeyPair {
 /// Implementations must handle invalid public keys either by returning some output which is purely a function of the public key 
 /// and does not depend on the private key, or by signaling an error to the caller. 
 /// The DH function may define more specific rules for handling invalid values.
-DH :: proc(key_pair: KeyPair, public_key: [HASHLEN]u8) -> [32]u8 {
+DH :: proc(key_pair: KeyPair, public_key: [DHLEN]u8) -> [DHLEN]u8 {
     key_pair := key_pair
     public_key := public_key
     assert(key_pair.private_key != 0 && key_pair.public_key != 0);
     x25519.scalarmult_basepoint(public_key[:], key_pair.private_key[:])
-    shared_secret : [32]u8
+    shared_secret : [DHLEN]u8
     x25519.scalarmult(shared_secret[:], key_pair.private_key[:], public_key[:])
     return shared_secret
 } 
@@ -110,7 +110,7 @@ CryptoBuffer :: struct {
 /// (using the terminology from [1]) and returns a ciphertext that is the same size as the plaintext plus 16 bytes for authentication data. 
 /// The entire ciphertext must be indistinguishable from random if the key is secret 
 /// (note that this is an additional requirement that isn't necessarily met by all AEAD schemes).
-ENCRYPT :: proc(k: [HASHLEN]u8, n: u64, ad: []u8, plaintext: []u8, allocator := context.allocator) -> (CryptoBuffer, NoiseError) {
+ENCRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, plaintext: []u8, allocator := context.allocator) -> (CryptoBuffer, NoiseError) {
 
     plaintext := plaintext
 
@@ -137,7 +137,7 @@ ENCRYPT :: proc(k: [HASHLEN]u8, n: u64, ad: []u8, plaintext: []u8, allocator := 
 /// Decrypts ciphertext using a cipher key k of 32 bytes, an 8-byte unsigned integer nonce n,
 /// and associated data ad. Returns the plaintext, unless authentication fails, 
 /// in which case an error is signaled to the caller.
-DECRYPT :: proc(k: [HASHLEN]u8, n: u64, ad: []u8, ciphertext: CryptoBuffer) -> ([]u8, NoiseError) {
+DECRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, ciphertext: CryptoBuffer) -> ([]u8, NoiseError) {
     
     k := k
     
@@ -171,11 +171,11 @@ HASH :: proc(data: ..[]u8) -> [HASHLEN]u8 {
 /// Returns a new 32-byte cipher key as a pseudorandom function of k. If this function is not specifically defined for some set of cipher functions, 
 /// then it defaults to returning the first 32 bytes from ENCRYPT(k,    maxnonce, zerolen, zeros), 
 /// where maxnonce equals 264-1, zerolen is a zero-length byte sequence, and zeros is a sequence of 32 bytes filled with zeros.
-REKEY :: proc(k: [HASHLEN]u8) -> [HASHLEN]u8 {
-    zeros : [HASHLEN]u8
+REKEY :: proc(k: [DHLEN]u8) -> [DHLEN]u8 {
+    zeros : [32]u8
     n :u64 = 0xFFFFFFFFFFFFFFFF
     ENCRYPT(k, n, nil, zeros[:])
-    new_key : [HASHLEN]u8
+    new_key : [DHLEN]u8
     copy(new_key[:], zeros[:])
     return new_key
 }
@@ -317,7 +317,7 @@ Token :: enum {
 }
 
 CipherState :: struct {
-    k: [HASHLEN]u8,
+    k: [DHLEN]u8,
     n: u64,
 }
 
@@ -331,8 +331,8 @@ HandshakeState :: struct {
     symmetricstate: SymmetricState,
     s: KeyPair,
     e: KeyPair, 
-    rs: [HASHLEN]u8,
-    re: [HASHLEN]u8,
+    rs: [DHLEN]u8,
+    re: [DHLEN]u8,
     initiator: bool,
     message_patterns: [][]Token,
     current_pattern: int,
@@ -340,7 +340,7 @@ HandshakeState :: struct {
 
 
 /// Sets k = key. Sets n = 0.
-cipherstate_InitializeKey :: proc(key: [HASHLEN]u8) -> CipherState {
+cipherstate_InitializeKey :: proc(key: [DHLEN]u8) -> CipherState {
     return CipherState {
         k = key,
         n = 0
@@ -403,7 +403,7 @@ cipherstate_Rekey :: proc(self: ^CipherState) {
 
 /// Calls InitializeKey(empty).
 symmetricstate_InitializeSymmetric :: proc(protocol_name: string) -> SymmetricState {
-    zeroslice : [HASHLEN]u8
+    zeroslice : [DHLEN]u8
     if len(protocol_name) < 32 {
         protocol_name_bytes : [32]u8
         copy(protocol_name_bytes[:], protocol_name[:])
@@ -443,11 +443,11 @@ symmetricstate_MixHash :: proc(self: ^SymmetricState, data: ..[]u8, ) {
 /// Sets ck, temp_k = HKDF(ck, input_key_material, 2).
 /// If HASHLEN is 64, then truncates temp_k to 32 bytes.
 /// Calls InitializeKey(temp_k).
-symmetricstate_MixKey :: proc(self: ^SymmetricState, input_key_material: [HASHLEN]u8) {
+symmetricstate_MixKey :: proc(self: ^SymmetricState, input_key_material: []u8) {
     input_key_material := input_key_material
     ck, temp_k, _ := HKDF(self.ck, input_key_material[:])
     self.ck = ck
-    self.cipherstate = cipherstate_InitializeKey(temp_k)
+    self.cipherstate = cipherstate_InitializeKey(array32_from_slice(temp_k[:32]))
 }
 
 /// This function is used for handling pre-shared symmetric keys, as described in Section 9. It executes the following steps:
@@ -456,12 +456,12 @@ symmetricstate_MixKey :: proc(self: ^SymmetricState, input_key_material: [HASHLE
 /// Calls MixHash(temp_h).
 /// If HASHLEN is 64, then truncates temp_k to 32 bytes.
 /// Calls InitializeKey(temp_k).
-symmetricstate_MixKeyAndHash :: proc(self: ^SymmetricState, input_key_material: [HASHLEN]u8) {
+symmetricstate_MixKeyAndHash :: proc(self: ^SymmetricState, input_key_material: []u8) {
     input_key_material := input_key_material
     ck, temp_h, temp_k := HKDF(self.ck, input_key_material[:])
     self.ck = ck
     symmetricstate_MixHash(self, temp_h[:])
-    self.cipherstate = cipherstate_InitializeKey(temp_k);
+    self.cipherstate = cipherstate_InitializeKey(array32_from_slice(temp_k[:]));
 }
 
 /// Returns h. This function should only be called at the end of a handshake, i.e. after the Split() function has been called. 
@@ -495,8 +495,8 @@ symmetricstate_DecryptAndHash :: proc(self:  ^SymmetricState, ciphertext: Crypto
 /// Returns the pair (c1, c2).
 symmetricstate_Split :: proc(self: ^SymmetricState) -> (CipherState, CipherState) {
     temp_k1, temp_k2, _ := HKDF(self.ck, nil)
-    c1 := cipherstate_InitializeKey(temp_k1)
-    c2 := cipherstate_InitializeKey(temp_k2)
+    c1 := cipherstate_InitializeKey(array32_from_slice(temp_k1[:]))
+    c2 := cipherstate_InitializeKey(array32_from_slice(temp_k2[:]))
     return c1, c2
 }
 
@@ -531,8 +531,8 @@ handshakestate_Initialize :: proc(
     prologue: []u8,
     s: KeyPair,
     e: KeyPair,
-    rs: [HASHLEN]u8,
-    re: [HASHLEN]u8,
+    rs: [DHLEN]u8,
+    re: [DHLEN]u8,
 ) -> HandshakeState {
     handshake_pattern_NK : [][]Token = {
         {.e},
@@ -593,28 +593,34 @@ handshakestate_WriteMessage :: proc(self: ^HandshakeState, message_buffer: net.T
                 net.send_tcp(message_buffer, temp.tag[:])
             }
             case .ee: {
-                symmetricstate_MixKey(&self.symmetricstate, DH(self.e, self.re))
+                dh := DH(self.e, self.re)
+                symmetricstate_MixKey(&self.symmetricstate, dh[:])
             }
 
             case .es: {
                 if self.initiator {
-                    symmetricstate_MixKey(&self.symmetricstate, DH(self.e, self.rs))
+                    dh := DH(self.e, self.rs)
+                    symmetricstate_MixKey(&self.symmetricstate, dh[:])
                 } else {
-                    symmetricstate_MixKey(&self.symmetricstate, DH(self.s, self.re))
+                    dh := DH(self.s, self.re)
+                    symmetricstate_MixKey(&self.symmetricstate, dh[:])
                 }
             }
             
             case .se: {
                 if self.initiator {
-                    symmetricstate_MixKey(&self.symmetricstate, DH(self.s, self.re))
+                    dh := DH(self.s, self.re)
+                    symmetricstate_MixKey(&self.symmetricstate, dh[:])
                 } else {
-                    symmetricstate_MixKey(&self.symmetricstate, DH(self.e, self.rs))
+                    dh := DH(self.e, self.rs)
+                    symmetricstate_MixKey(&self.symmetricstate, dh[:])
                     
                 }
             }
             
             case .ss: {
-                symmetricstate_MixKey(&self.symmetricstate, DH(self.s, self.rs))
+                dh := DH(self.s, self.rs)
+                symmetricstate_MixKey(&self.symmetricstate, dh[:])
             }
         };
     }
@@ -649,7 +655,7 @@ handshakestate_WriteMessage :: proc(self: ^HandshakeState, message_buffer: net.T
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
 handshakestate_ReadMessage :: proc(self: ^HandshakeState, message: net.TCP_Socket)  -> (Maybe(CipherState), Maybe(CipherState), NoiseError) {
-    zeroslice: [HASHLEN]u8
+    zeroslice: [DHLEN]u8
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1
     for token in pattern {
@@ -680,27 +686,33 @@ handshakestate_ReadMessage :: proc(self: ^HandshakeState, message: net.TCP_Socke
             }
             
             case .ee: {
-                symmetricstate_MixKey(&self.symmetricstate, DH(self.e, self.re))
+                dh := DH(self.e, self.re)
+                symmetricstate_MixKey(&self.symmetricstate, dh[:])
             }
 
             case .es: {
                 if self.initiator {
-                    symmetricstate_MixKey(&self.symmetricstate, DH(self.e, self.rs));  
+                    dh := DH(self.e, self.rs)
+                    symmetricstate_MixKey(&self.symmetricstate, dh[:]);  
                 } else {
-                    symmetricstate_MixKey(&self.symmetricstate, DH(self.s, self.re));
+                    dh := DH(self.s, self.re)
+                    symmetricstate_MixKey(&self.symmetricstate, dh[:]);
                 }
             }
             
             case .se: {
                 if self.initiator {
-                    symmetricstate_MixKey(&self.symmetricstate, DH(self.s, self.re));  
+                    dh := DH(self.s, self.re)
+                    symmetricstate_MixKey(&self.symmetricstate, dh[:]);  
                 } else {
-                    symmetricstate_MixKey(&self.symmetricstate, DH(self.e, self.rs));
+                    dh := DH(self.e, self.rs)
+                    symmetricstate_MixKey(&self.symmetricstate, dh[:]);
                 }
             }
             
             case .ss: {
-                symmetricstate_MixKey(&self.symmetricstate, DH(self.s, self.rs))
+                dh := DH(self.s, self.rs)
+                symmetricstate_MixKey(&self.symmetricstate, dh[:])
             }
         };
     }
@@ -742,7 +754,7 @@ u64_from_be_slice :: proc(slice: []u8) -> u64 {
 }
 
 cryptobuffer_from_slice :: proc(slice: []u8) -> CryptoBuffer {
-    length := len(slice)
+    length := len(slice)-28
     return CryptoBuffer{
         iv = {slice[0], slice[1], slice[2], slice[3],
                 slice[4], slice[5], slice[6], slice[7], 

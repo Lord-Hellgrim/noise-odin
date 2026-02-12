@@ -82,9 +82,8 @@ connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseError) {
     }
 
 
-
 initiate_connection :: proc(address: string) -> (Connection, NoiseError) {
-    zeroslice : [internals.HASHLEN]u8
+    zeroslice : [internals.DHLEN]u8
     stream, _ := net.dial_tcp_from_hostname_and_port_string(address)
     s := internals.keypair_random()
     handshake_state := internals.handshakestate_Initialize(
@@ -148,7 +147,7 @@ ACCEPT_CONNECTION :: proc(stream: net.TCP_Socket, s: KeyPair) -> (Connection, No
 }
 
 ACCEPT_CONNECTION_STEP_1 :: proc(stream: net.TCP_Socket, s: KeyPair) -> (HandshakeState, NoiseError) {
-    zeroslice : [internals.HASHLEN]u8
+    zeroslice : [internals.DHLEN]u8
     handshakestate := internals.handshakestate_Initialize(false, nil, s, internals.keypair_empty(), zeroslice, zeroslice);
 
     // <- e
@@ -187,7 +186,7 @@ ACCEPT_CONNECTION_STEP_3 :: proc(stream: net.TCP_Socket, handshakestate: ^Handsh
 
 
 connection_nullcon :: proc() -> Connection {
-    zeroslice : [internals.HASHLEN]u8
+    zeroslice : [internals.DHLEN]u8
     return Connection{
         initiator_cipherstate = internals.cipherstate_InitializeKey(zeroslice), 
         responder_cipherstate = internals.cipherstate_InitializeKey(zeroslice), 
