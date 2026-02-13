@@ -165,19 +165,19 @@ ACCEPT_CONNECTION_STEP_2 :: proc(stream: net.TCP_Socket, handshakestate: ^Handsh
 
 ACCEPT_CONNECTION_STEP_3 :: proc(stream: net.TCP_Socket, handshakestate: ^HandshakeState) -> (Connection, NoiseError) {
     // <- s, se
-    res1, res2, _ := internals.handshakestate_ReadMessage(handshakestate, stream)
+    res1, res2, status := internals.handshakestate_ReadMessage(handshakestate, stream)
 
     fmt.println("returning Connection!!")
-    switch res1 {
-        case res1.(internals.CipherState):  {
+    #partial switch status {
+        case .NoError:  {
             return Connection {
-                initiator_cipherstate = res1.?,
-                responder_cipherstate = res2.?,
+                initiator_cipherstate = res1,
+                responder_cipherstate = res2,
                 stream = stream,
                 peer = ""
             }, .NoError
         }
-        case nil: {
+        case: {
             return connection_nullcon(), .Io
         }
     }
