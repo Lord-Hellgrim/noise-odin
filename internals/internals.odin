@@ -35,7 +35,15 @@ DEFAULT_PROTOCOL_NAME :: "Noise_NK_25519_AESGCM_SHA512";
 
 DhType :: enum {
     x25519,
+    x448,
+}
 
+DhLen :: proc(dh: DhType) -> int {
+    switch dh {
+        case .x25519: return 32
+        case .x448: return 56
+    }
+    return 0
 }
 
 CipherType :: enum {
@@ -43,7 +51,24 @@ CipherType :: enum {
 }
 
 HashType :: enum {
+    SHA256,
     SHA512,
+}
+
+HashLen :: proc(hash: HashType) -> int {
+    switch hash {
+        case .SHA256: return 32
+        case .SHA512: return 64
+    }
+    return 0
+}
+
+BlockLen :: proc(hash: HashType) -> int {
+    switch hash {
+        case .SHA256: return 64
+        case .SHA512: return 128
+    }
+    return 0
 }
 
 HandshakePattern :: enum {
