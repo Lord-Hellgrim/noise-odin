@@ -63,10 +63,11 @@ keypair_random :: proc() -> KeyPair {
     }
 }
 
-NoiseError :: enum {
+NoiseStatus :: enum {
     NoError,
     WrongState,
     Io,
+    Unfinished
 }
 
 
@@ -110,7 +111,7 @@ CryptoBuffer :: struct {
 /// (using the terminology from [1]) and returns a ciphertext that is the same size as the plaintext plus 16 bytes for authentication data. 
 /// The entire ciphertext must be indistinguishable from random if the key is secret 
 /// (note that this is an additional requirement that isn't necessarily met by all AEAD schemes).
-ENCRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, plaintext: []u8, allocator := context.allocator) -> (CryptoBuffer, NoiseError) {
+ENCRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, plaintext: []u8, allocator := context.allocator) -> (CryptoBuffer, NoiseStatus) {
 
     plaintext := plaintext
 
@@ -137,7 +138,7 @@ ENCRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, plaintext: []u8, allocator := co
 /// Decrypts ciphertext using a cipher key k of 32 bytes, an 8-byte unsigned integer nonce n,
 /// and associated data ad. Returns the plaintext, unless authentication fails, 
 /// in which case an error is signaled to the caller.
-DECRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, ciphertext: CryptoBuffer) -> ([]u8, NoiseError) {
+DECRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, ciphertext: CryptoBuffer) -> ([]u8, NoiseStatus) {
     
     k := k
     
@@ -267,7 +268,7 @@ ERROR_PROTOCOL := Protocol {
     hash = nil
 }
 
-parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseError) {
+parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus) {
     // Default protocol string "Noise_XX_25519_AESGCM_SHA512"
 
     if len(protocol_string) > 50 {
@@ -375,7 +376,7 @@ cipherstate_EncryptWithAd :: proc(self: ^CipherState, ad: []u8, plaintext: []u8)
 
 /// If k is non-empty returns DECRYPT(k, n++, ad, ciphertext). Otherwise returns ciphertext. 
 /// If an authentication failure occurs in DECRYPT() then n is not incremented and an error is signaled to the caller.
-cipherstate_DecryptWithAd :: proc(self: ^CipherState, ad: []u8, ciphertext: CryptoBuffer) -> ([]u8, NoiseError) {
+cipherstate_DecryptWithAd :: proc(self: ^CipherState, ad: []u8, ciphertext: CryptoBuffer) -> ([]u8, NoiseStatus) {
     if cipherstate_HasKey(self) {
         plaintext, decrypt_error := DECRYPT(self.k, self.n, ad, ciphertext)
         self.n += 1;
@@ -480,7 +481,7 @@ symmetricstate_EncryptAndHash :: proc(self:  ^SymmetricState, plaintext: []u8) -
 
 /// Sets plaintext = DecryptWithAd(h, ciphertext), calls MixHash(ciphertext), and returns plaintext. 
 /// Note that if k is empty, the DecryptWithAd() call will set plaintext equal to ciphertext.
-symmetricstate_DecryptAndHash :: proc(self:  ^SymmetricState, ciphertext: CryptoBuffer) -> ([]u8, NoiseError) {
+symmetricstate_DecryptAndHash :: proc(self:  ^SymmetricState, ciphertext: CryptoBuffer) -> ([]u8, NoiseStatus) {
     ciphertext := ciphertext
     result, decrypt_error := cipherstate_DecryptWithAd(&self.cipherstate, self.h[:], ciphertext)
     symmetricstate_MixHash(self, ciphertext.iv[:], ciphertext.main_body, ciphertext.tag[:])
@@ -576,7 +577,7 @@ handshakestate_Initialize :: proc(
 /// Appends EncryptAndHash(payload) to the buffer.
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
-handshakestate_WriteMessage :: proc(self: ^HandshakeState, message_buffer: net.TCP_Socket) -> (Maybe(CipherState), Maybe(CipherState), NoiseError) {
+handshakestate_WriteMessage :: proc(self: ^HandshakeState, message_buffer: net.TCP_Socket) -> (Maybe(CipherState), Maybe(CipherState), NoiseStatus) {
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1;
     for token in pattern {
@@ -654,7 +655,7 @@ handshakestate_WriteMessage :: proc(self: ^HandshakeState, message_buffer: net.T
 /// Calls DecryptAndHash() on the remaining bytes of the message and stores the output into payload_buffer.
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
-handshakestate_ReadMessage :: proc(self: ^HandshakeState, message: net.TCP_Socket)  -> (Maybe(CipherState), Maybe(CipherState), NoiseError) {
+handshakestate_ReadMessage :: proc(self: ^HandshakeState, message: net.TCP_Socket)  -> (CipherState, CipherState, NoiseStatus) {
     zeroslice: [DHLEN]u8
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1
@@ -664,7 +665,7 @@ handshakestate_ReadMessage :: proc(self: ^HandshakeState, message: net.TCP_Socke
                 e : [DHLEN]u8
                 net.recv_tcp(message, e[:])
                 if self.re != zeroslice {
-                    return nil, nil, .WrongState
+                    return CipherState{}, CipherState{}, .WrongState
                 } else {
                     self.re = e
                     symmetricstate_MixHash(&self.symmetricstate, self.re[:])
@@ -680,7 +681,7 @@ handshakestate_ReadMessage :: proc(self: ^HandshakeState, message: net.TCP_Socke
                     if self.rs == zeroslice {
                         self.rs = new_rs
                     } else {
-                        return nil, nil, .WrongState
+                        return CipherState{}, CipherState{}, .WrongState
                     }
                 }
             }
@@ -720,7 +721,7 @@ handshakestate_ReadMessage :: proc(self: ^HandshakeState, message: net.TCP_Socke
         sender, receiver := symmetricstate_Split(&self.symmetricstate)
         return sender, receiver, .NoError
     } else {
-        return nil, nil, .NoError
+        return CipherState{}, CipherState{}, .Unfinished
     }
 }
 

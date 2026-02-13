@@ -7,7 +7,7 @@ import "core:fmt"
 
 
 
-NoiseError :: internals.NoiseError
+NoiseError :: internals.NoiseStatus
 
 
 Connection :: struct {
@@ -169,7 +169,7 @@ ACCEPT_CONNECTION_STEP_3 :: proc(stream: net.TCP_Socket, handshakestate: ^Handsh
 
     fmt.println("returning Connection!!")
     switch res1 {
-        case res1.?:  {
+        case res1.(internals.CipherState):  {
             return Connection {
                 initiator_cipherstate = res1.?,
                 responder_cipherstate = res2.?,
