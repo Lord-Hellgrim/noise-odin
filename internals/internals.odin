@@ -531,16 +531,18 @@ handshakestate_Initialize :: proc(
     re: [DHLEN]u8,
     protocol_name := DEFAULT_PROTOCOL_NAME
 ) -> (HandshakeState, NoiseStatus) {
-    handshake_pattern_NK : [][]Token = {
-        {.e},
-        {.e, .ee, .s, .es},
-        {.s, .se}
-    };
-
+    
     symmetricstate, status := symmetricstate_InitializeSymmetric(protocol_name)
     if status == .Protocol_could_not_be_parsed {
         return HandshakeState{}, status
     }
+
+    message_pattern : [][]Token
+    switch symmetricstate.cipherstate.protocol.handshake_pattern {
+        case .XX: message_pattern = PATTERN_XX
+        case .NK: message_pattern = PATTERN_NK
+    }
+
     symmetricstate_MixHash(&symmetricstate, prologue)
     output := HandshakeState {
         symmetricstate = symmetricstate,
@@ -549,7 +551,7 @@ handshakestate_Initialize :: proc(
         rs = rs,
         re = re,
         initiator = initiator,
-        message_patterns = handshake_pattern_NK,
+        message_patterns = message_pattern,
         current_pattern = 0,
     };
 
