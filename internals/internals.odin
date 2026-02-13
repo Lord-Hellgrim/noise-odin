@@ -833,8 +833,8 @@ zeropad32 :: proc(input: []u8) -> [HASHLEN]u8 {
     return output
 }
 
-concat_bytes :: proc(b1: []u8, b2: []u8) -> []u8 {
-    output := make_slice([]u8, len(b1) + len(b2));
+concat_bytes :: proc(b1: []u8, b2: []u8, allocator := context.allocator) -> []u8 {
+    output := make_slice([]u8, len(b1) + len(b2), allocator);
     copy(output[0:len(b1)], b1)
     copy(output[len(b1):], b2)
     return output
