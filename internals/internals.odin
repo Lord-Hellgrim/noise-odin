@@ -819,16 +819,23 @@ array_xor :: proc(a: [BLOCKLEN]u8, b: [BLOCKLEN]u8) -> [BLOCKLEN]u8 {
     return output
 }
 
-zeropad128 :: proc(input: []u8) -> [BLOCKLEN]u8 {
-    assert(len(input) <= BLOCKLEN)
-    output : [BLOCKLEN]u8
+zeropad128 :: proc(input: []u8) -> [128]u8 {
+    assert(len(input) <= 128)
+    output : [128]u8
     copy(output[:], input[:])
     return output
 }
 
-zeropad32 :: proc(input: []u8) -> [HASHLEN]u8 {
-    assert(len(input) <= HASHLEN)
-    output : [HASHLEN]u8
+zeropad64 :: proc(input: []u8) -> [64]u8 {
+    assert(len(input) <= 64)
+    output : [64]u8
+    copy(output[:], input[:])
+    return output
+}
+
+zeropad32 :: proc(input: []u8) -> [32]u8 {
+    assert(len(input) <= 32)
+    output : [32]u8
     copy(output[:], input[:])
     return output
 }
