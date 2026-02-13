@@ -102,18 +102,18 @@ initiate_connection :: proc(address: string) -> (Connection, NoiseError) {
     internals.handshakestate_ReadMessage(&handshake_state, stream)
 
     // -> s, se
-    res1, res2, connection_error := internals.handshakestate_WriteMessage(&handshake_state, stream)
+    res1, res2, status := internals.handshakestate_WriteMessage(&handshake_state, stream)
 
-    switch res1 {
-        case res1.?: {
+    #partial switch status {
+        case .NoError: {
             return Connection {
-                    initiator_cipherstate = res1.?,
-                    responder_cipherstate = res2.?,
+                    initiator_cipherstate = res1,
+                    responder_cipherstate = res2,
                     stream = stream,
                     peer = ""
                 }, .NoError
             }
-        case nil: {
+        case .WrongState: {
             return Connection{
                 initiator_cipherstate = internals.cipherstate_InitializeKey(zeroslice), 
                 responder_cipherstate = internals.cipherstate_InitializeKey(zeroslice), 
@@ -121,15 +121,16 @@ initiate_connection :: proc(address: string) -> (Connection, NoiseError) {
                 peer = ""
             }, 
             .Io
-        } 
+        }
+        case: 
+            return Connection{
+                initiator_cipherstate = internals.cipherstate_InitializeKey(zeroslice), 
+                responder_cipherstate = internals.cipherstate_InitializeKey(zeroslice), 
+                stream = net.TCP_Socket(0), 
+                peer = ""}, 
+                .WrongState
     }
 
-    return Connection{
-        initiator_cipherstate = internals.cipherstate_InitializeKey(zeroslice), 
-        responder_cipherstate = internals.cipherstate_InitializeKey(zeroslice), 
-        stream = net.TCP_Socket(0), 
-        peer = ""}, 
-        .WrongState
 }
 
 KeyPair :: internals.KeyPair

@@ -577,7 +577,7 @@ handshakestate_Initialize :: proc(
 /// Appends EncryptAndHash(payload) to the buffer.
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
-handshakestate_WriteMessage :: proc(self: ^HandshakeState, message_buffer: net.TCP_Socket) -> (Maybe(CipherState), Maybe(CipherState), NoiseStatus) {
+handshakestate_WriteMessage :: proc(self: ^HandshakeState, message_buffer: net.TCP_Socket) -> (CipherState, CipherState, NoiseStatus) {
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1;
     for token in pattern {
@@ -630,7 +630,7 @@ handshakestate_WriteMessage :: proc(self: ^HandshakeState, message_buffer: net.T
         sender, receiver := symmetricstate_Split(&self.symmetricstate)
         return sender, receiver, .NoError
     } else {
-        return nil, nil, .NoError
+        return CipherState{}, CipherState{}, .Unfinished
     }
 }
 
