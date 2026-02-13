@@ -13,19 +13,17 @@ import "core:simd"
 
 import "core:fmt"
 
-import "core:bytes"
 import "core:net"
 
-import "core:unicode/utf8"
 
 /// A constant specifying the size in bytes of public keys and DH outputs. For security reasons, DHLEN must be 32 or greater.
-DHLEN : int :  32;
+DHLEN : uintptr :  32;
 /// A constant specifying the size in bytes of the hash output. Must be 32 or 64.
-HASHLEN: int : 64;
+HASHLEN: uintptr : 64;
 
 /// A constant specifying the size in bytes that the hash function uses internally to divide its input for iterative processing. 
 /// This is needed to use the hash function with HMAC (BLOCKLEN is B in [3]).
-BLOCKLEN: int : 128;
+BLOCKLEN: uintptr : 128;
 /// The HMAC padding strings
 IPAD: [BLOCKLEN]u8 : 0x36
 OPAD: [BLOCKLEN]u8 : 0x5c
@@ -71,7 +69,8 @@ NoiseStatus :: enum {
     Unfinished_handshake,
     Handshake_complete,
     re_is_not_empty_when_processing_token_e,
-    rs_is_not_empty_when_processing_token_s
+    rs_is_not_empty_when_processing_token_s,
+    invalid_address,
 }
 
 
@@ -580,27 +579,21 @@ handshakestate_Initialize :: proc(
 /// Appends EncryptAndHash(payload) to the buffer.
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
-handshakestate_WriteMessage :: proc(self: ^HandshakeState, message_buffer: []byte) -> (CipherState, CipherState, NoiseStatus) {
-    message_buffer := message_buffer
+handshakestate_WriteMessage :: proc(self: ^HandshakeState, message_buffer: net.TCP_Socket) -> (CipherState, CipherState, NoiseStatus) {
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1;
-    buffer_index: int = 0
     for token in pattern {
         switch token {
             case .e: {
                 self.e = GENERATE_KEYPAIR()
-                copy(message_buffer[buffer_index:buffer_index+DHLEN], self.e.public_key[:])
-                buffer_index += DHLEN
+                net.send_tcp(message_buffer, self.e.public_key[:])
                 symmetricstate_MixHash(&self.symmetricstate, self.e.public_key[:])
             }
             case .s: {
                 temp := symmetricstate_EncryptAndHash(&self.symmetricstate, self.s.public_key[:])
-                copy(message_buffer[buffer_index: buffer_index + 12], temp.iv[:])
-                buffer_index += 12
-                copy(message_buffer[buffer_index: buffer_index + len(temp.main_body)], temp.main_body)
-                buffer_index += len(temp.main_body)
-                copy(message_buffer[buffer_index: buffer_index + 16], temp.tag[:])
-                buffer_index += 16
+                net.send_tcp(message_buffer, temp.iv[:])
+                net.send_tcp(message_buffer, temp.main_body)
+                net.send_tcp(message_buffer, temp.tag[:])
             }
             case .ee: {
                 dh := DH(self.e, self.re)
@@ -665,17 +658,15 @@ handshakestate_WriteMessage :: proc(self: ^HandshakeState, message_buffer: []byt
 /// Calls DecryptAndHash() on the remaining bytes of the message and stores the output into payload_buffer.
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
-handshakestate_ReadMessage :: proc(self: ^HandshakeState, message: []u8)  -> (CipherState, CipherState, NoiseStatus) {
+handshakestate_ReadMessage :: proc(self: ^HandshakeState, message: net.TCP_Socket)  -> (CipherState, CipherState, NoiseStatus) {
     zeroslice: [DHLEN]u8
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1
-    buffer_index := 0
     for token in pattern {
         switch token {
             case .e: {
                 e : [DHLEN]u8
-                copy(e[:], message[buffer_index : buffer_index + DHLEN])
-                buffer_index += DHLEN
+                net.recv_tcp(message, e[:])
                 if self.re == zeroslice {
                     self.re = e
                     symmetricstate_MixHash(&self.symmetricstate, self.re[:])
@@ -686,8 +677,7 @@ handshakestate_ReadMessage :: proc(self: ^HandshakeState, message: []u8)  -> (Ci
             case .s: {
                 if cipherstate_HasKey(&self.symmetricstate.cipherstate) {
                     rs : [DHLEN+16]u8
-                    copy(rs[:], message[buffer_index : buffer_index + DHLEN])
-                    buffer_index += DHLEN
+                    net.recv_tcp(message, rs[:])
                     rs_buffer := cryptobuffer_from_slice(rs[:])
                     temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
                     new_rs := array32_from_slice(temp[:])
@@ -829,14 +819,14 @@ array_xor :: proc(a: [BLOCKLEN]u8, b: [BLOCKLEN]u8) -> [BLOCKLEN]u8 {
 }
 
 zeropad128 :: proc(input: []u8) -> [BLOCKLEN]u8 {
-    assert(len(input) <= BLOCKLEN)
+    assert(uintptr(len(input)) <= BLOCKLEN)
     output : [BLOCKLEN]u8
     copy(output[:], input[:])
     return output
 }
 
 zeropad32 :: proc(input: []u8) -> [HASHLEN]u8 {
-    assert(len(input) <= HASHLEN)
+    assert(uintptr(len(input)) <= HASHLEN)
     output : [HASHLEN]u8
     copy(output[:], input[:])
     return output
