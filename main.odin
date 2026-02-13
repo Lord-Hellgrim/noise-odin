@@ -15,10 +15,13 @@ when ODIN_OS == .Linux {
         address, _ := net.parse_ip4_address("127.0.0.1")
         endpoint := net.Endpoint{address = address, port = 3001}
         listener, _ := net.listen_tcp(endpoint)
-        keypair := keypair_random()
-        connection, status := ACCEPT_CONNECTION(listener, keypair)
-        data, _ := connection_receive(&connection)
-        fmt.println(data)
+        for {
+            new_socket, peer, _ := net.accept_tcp(listener)
+            keypair := keypair_random()
+            connection, status := ACCEPT_CONNECTION(new_socket, keypair)
+            data, _ := connection_receive(&connection)
+            fmt.println(data)
+        }
     
     }
 } else when ODIN_OS == .Windows {
