@@ -19,13 +19,13 @@ import "core:net"
 import "core:unicode/utf8"
 
 /// A constant specifying the size in bytes of public keys and DH outputs. For security reasons, DHLEN must be 32 or greater.
-DHLEN : uintptr :  32;
+DHLEN : int :  32;
 /// A constant specifying the size in bytes of the hash output. Must be 32 or 64.
-HASHLEN: uintptr : 64;
+HASHLEN: int : 64;
 
 /// A constant specifying the size in bytes that the hash function uses internally to divide its input for iterative processing. 
 /// This is needed to use the hash function with HMAC (BLOCKLEN is B in [3]).
-BLOCKLEN: uintptr : 128;
+BLOCKLEN: int : 128;
 /// The HMAC padding strings
 IPAD: [BLOCKLEN]u8 : 0x36
 OPAD: [BLOCKLEN]u8 : 0x5c
@@ -64,10 +64,14 @@ keypair_random :: proc() -> KeyPair {
 }
 
 NoiseStatus :: enum {
-    NoError,
-    WrongState,
+    Ok,
+    Decryption_failed_to_authenticate,
+    Protocol_could_not_be_parsed,
     Io,
-    Unfinished
+    Unfinished_handshake,
+    Handshake_complete,
+    re_is_not_empty_when_processing_token_e,
+    rs_is_not_empty_when_processing_token_s
 }
 
 
@@ -131,7 +135,7 @@ ENCRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, plaintext: []u8, allocator := co
     ciphertext.tag = tag
     ciphertext.main_body = plaintext
 
-    return ciphertext, .NoError
+    return ciphertext, .Ok
 }
 
 
@@ -148,9 +152,9 @@ DECRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, ciphertext: CryptoBuffer) -> ([]
 
     aead.init(&ctx, aead.Algorithm.AES_GCM_256, k[:])
     if aead.open_ctx(&ctx, ciphertext.main_body, iv[:], ad, ciphertext.main_body, tag[:]) {
-        return ciphertext.main_body, .NoError
+        return ciphertext.main_body, .Ok
     } else {
-        return ciphertext.main_body, .WrongState
+        return nil, .Decryption_failed_to_authenticate
     }
 }
 
@@ -272,38 +276,38 @@ parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus
     // Default protocol string "Noise_XX_25519_AESGCM_SHA512"
 
     if len(protocol_string) > 50 {
-        return ERROR_PROTOCOL, .WrongState
+        return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
     protocol : Protocol
     split := strings.split(protocol_string, "_")
     defer delete(split)
     if len(split) != 5 {
-        return ERROR_PROTOCOL, .WrongState
+        return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
     switch split[1] {
         case "XX": protocol.handshake_pattern = PATTERN_XX
         case "NK": protocol.handshake_pattern = PATTERN_NK
-        case: return ERROR_PROTOCOL, .WrongState
+        case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
     switch split[2] {
         case "25519": protocol.dh = .x25519
-        case: return ERROR_PROTOCOL, .WrongState
+        case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
     switch split[3] {
         case "AESGCM": protocol.cipher = .AES256gcm
-        case: return ERROR_PROTOCOL, .WrongState
+        case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
     switch split[4] {
         case "SHA512": protocol.hash = .SHA512
-        case: return ERROR_PROTOCOL, .WrongState
+        case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
-    return protocol, .NoError
+    return protocol, .Ok
 
 }
 
@@ -382,7 +386,7 @@ cipherstate_DecryptWithAd :: proc(self: ^CipherState, ad: []u8, ciphertext: Cryp
         self.n += 1;
         return plaintext, decrypt_error
     } else {
-        return ciphertext.main_body, .NoError
+        return ciphertext.main_body, .Ok
     }
 }
 
@@ -485,7 +489,7 @@ symmetricstate_DecryptAndHash :: proc(self:  ^SymmetricState, ciphertext: Crypto
     ciphertext := ciphertext
     result, decrypt_error := cipherstate_DecryptWithAd(&self.cipherstate, self.h[:], ciphertext)
     symmetricstate_MixHash(self, ciphertext.iv[:], ciphertext.main_body, ciphertext.tag[:])
-    return result, .NoError
+    return result, .Ok
 }
 
 /// Returns a pair of CipherState objects for encrypting transport messages. Executes the following steps, where zerolen is a zero-length byte sequence:
@@ -502,7 +506,6 @@ symmetricstate_Split :: proc(self: ^SymmetricState) -> (CipherState, CipherState
 }
 
 
-// impl HandshakeState {
 /// : Takes a valid handshake_pattern (see Section 7) and an initiator boolean specifying this party's role as either initiator or responder.
 
 /// Takes a prologue byte sequence which may be zero-length, or which may contain context information that both parties want to confirm is identical 
@@ -577,21 +580,27 @@ handshakestate_Initialize :: proc(
 /// Appends EncryptAndHash(payload) to the buffer.
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
-handshakestate_WriteMessage :: proc(self: ^HandshakeState, message_buffer: net.TCP_Socket) -> (CipherState, CipherState, NoiseStatus) {
+handshakestate_WriteMessage :: proc(self: ^HandshakeState, message_buffer: []byte) -> (CipherState, CipherState, NoiseStatus) {
+    message_buffer := message_buffer
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1;
+    buffer_index: int = 0
     for token in pattern {
         switch token {
             case .e: {
                 self.e = GENERATE_KEYPAIR()
-                net.send_tcp(message_buffer, self.e.public_key[:])
+                copy(message_buffer[buffer_index:buffer_index+DHLEN], self.e.public_key[:])
+                buffer_index += DHLEN
                 symmetricstate_MixHash(&self.symmetricstate, self.e.public_key[:])
             }
             case .s: {
                 temp := symmetricstate_EncryptAndHash(&self.symmetricstate, self.s.public_key[:])
-                net.send_tcp(message_buffer, temp.iv[:])
-                net.send_tcp(message_buffer, temp.main_body)
-                net.send_tcp(message_buffer, temp.tag[:])
+                copy(message_buffer[buffer_index: buffer_index + 12], temp.iv[:])
+                buffer_index += 12
+                copy(message_buffer[buffer_index: buffer_index + len(temp.main_body)], temp.main_body)
+                buffer_index += len(temp.main_body)
+                copy(message_buffer[buffer_index: buffer_index + 16], temp.tag[:])
+                buffer_index += 16
             }
             case .ee: {
                 dh := DH(self.e, self.re)
@@ -628,9 +637,10 @@ handshakestate_WriteMessage :: proc(self: ^HandshakeState, message_buffer: net.T
     
     if self.current_pattern > len(self.message_patterns) {
         sender, receiver := symmetricstate_Split(&self.symmetricstate)
-        return sender, receiver, .NoError
+        self.current_pattern = 0
+        return sender, receiver, .Ok
     } else {
-        return CipherState{}, CipherState{}, .Unfinished
+        return CipherState{}, CipherState{}, .Unfinished_handshake
     }
 }
 
@@ -655,33 +665,36 @@ handshakestate_WriteMessage :: proc(self: ^HandshakeState, message_buffer: net.T
 /// Calls DecryptAndHash() on the remaining bytes of the message and stores the output into payload_buffer.
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
-handshakestate_ReadMessage :: proc(self: ^HandshakeState, message: net.TCP_Socket)  -> (CipherState, CipherState, NoiseStatus) {
+handshakestate_ReadMessage :: proc(self: ^HandshakeState, message: []u8)  -> (CipherState, CipherState, NoiseStatus) {
     zeroslice: [DHLEN]u8
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1
+    buffer_index := 0
     for token in pattern {
         switch token {
             case .e: {
                 e : [DHLEN]u8
-                net.recv_tcp(message, e[:])
-                if self.re != zeroslice {
-                    return CipherState{}, CipherState{}, .WrongState
-                } else {
+                copy(e[:], message[buffer_index : buffer_index + DHLEN])
+                buffer_index += DHLEN
+                if self.re == zeroslice {
                     self.re = e
                     symmetricstate_MixHash(&self.symmetricstate, self.re[:])
+                } else {
+                    return CipherState{}, CipherState{}, .re_is_not_empty_when_processing_token_e
                 }
             }
             case .s: {
                 if cipherstate_HasKey(&self.symmetricstate.cipherstate) {
                     rs : [DHLEN+16]u8
-                    net.recv_tcp(message, rs[:])
+                    copy(rs[:], message[buffer_index : buffer_index + DHLEN])
+                    buffer_index += DHLEN
                     rs_buffer := cryptobuffer_from_slice(rs[:])
                     temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
                     new_rs := array32_from_slice(temp[:])
                     if self.rs == zeroslice {
                         self.rs = new_rs
                     } else {
-                        return CipherState{}, CipherState{}, .WrongState
+                        return CipherState{}, CipherState{}, .rs_is_not_empty_when_processing_token_s
                     }
                 }
             }
@@ -719,9 +732,9 @@ handshakestate_ReadMessage :: proc(self: ^HandshakeState, message: net.TCP_Socke
     }
     if self.current_pattern > len(self.message_patterns) {
         sender, receiver := symmetricstate_Split(&self.symmetricstate)
-        return sender, receiver, .NoError
+        return sender, receiver, .Handshake_complete
     } else {
-        return CipherState{}, CipherState{}, .Unfinished
+        return CipherState{}, CipherState{}, .Unfinished_handshake
     }
 }
 
@@ -755,6 +768,7 @@ u64_from_be_slice :: proc(slice: []u8) -> u64 {
 }
 
 cryptobuffer_from_slice :: proc(slice: []u8) -> CryptoBuffer {
+    assert(len(slice) > 28)
     length := len(slice)-28
     return CryptoBuffer{
         iv = {slice[0], slice[1], slice[2], slice[3],
@@ -815,14 +829,14 @@ array_xor :: proc(a: [BLOCKLEN]u8, b: [BLOCKLEN]u8) -> [BLOCKLEN]u8 {
 }
 
 zeropad128 :: proc(input: []u8) -> [BLOCKLEN]u8 {
-    assert(uintptr(len(input)) <= BLOCKLEN)
+    assert(len(input) <= BLOCKLEN)
     output : [BLOCKLEN]u8
     copy(output[:], input[:])
     return output
 }
 
 zeropad32 :: proc(input: []u8) -> [HASHLEN]u8 {
-    assert(uintptr(len(input)) <= HASHLEN)
+    assert(len(input) <= HASHLEN)
     output : [HASHLEN]u8
     copy(output[:], input[:])
     return output
