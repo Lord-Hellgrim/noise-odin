@@ -16,6 +16,7 @@ when ODIN_OS == .Linux {
         endpoint := net.Endpoint{address = address, port = 3001}
         listener, _ := net.listen_tcp(endpoint)
         for {
+            fmt.println("Listening for connections...")
             new_socket, peer, _ := net.accept_tcp(listener)
             keypair := keypair_random()
             connection, status := ACCEPT_CONNECTION(new_socket, keypair)
