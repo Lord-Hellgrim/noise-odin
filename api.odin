@@ -129,12 +129,15 @@ ConnectionStatus :: enum {
     pending,
     complete,
     error,
+    io_error,
 }
 
 step_connection :: proc(potential_connection: ^Connection, handshake_state: ^HandshakeState) -> ConnectionStatus{
 
+    
+
     initiator_cipherstate, responder_cipherstate : internals.CipherState
-    status : NoiseError
+    status : NoiseError = nil
     if handshake_state.initiator {
         if handshake_state.current_pattern % 2 == 0 {
             initiator_cipherstate, responder_cipherstate, status = internals.handshakestate_write_message(handshake_state, potential_connection.socket)
@@ -150,9 +153,14 @@ step_connection :: proc(potential_connection: ^Connection, handshake_state: ^Han
     }
 
     #partial switch status {
-        case .Handshake_complete:
+        case .Handshake_Complete: {
+            potential_connection.initiator_cipherstate = initiator_cipherstate
+            potential_connection.responder_cipherstate = responder_cipherstate
             return .complete
-        case .Unfinished_handshake:
+        }
+        case .Io:
+            return .io_error
+        case .Pending_Handshake:
             return .pending
         case:
             return .error
