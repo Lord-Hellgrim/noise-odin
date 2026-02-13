@@ -14,7 +14,7 @@ when ODIN_OS == .Linux {
     main :: proc() {
         address, _ := net.parse_ip4_address("127.0.0.1")
         endpoint := net.Endpoint{address = address, port = 3001}
-        listener, _ := net.listen_tcp(address)
+        listener, _ := net.listen_tcp(endpoint)
         keypair := keypair_random()
         connection, status := ACCEPT_CONNECTION(listener, keypair)
         data, _ := connection_receive(&connection)
