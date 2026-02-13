@@ -100,13 +100,13 @@ initiate_connection_all_the_way :: proc(address: string) -> (Connection, NoiseEr
     )
     
     // -> e
-    internals.handshakestate_WriteMessage(&handshake_state, stream)
+    internals.handshakestate_write_message(&handshake_state, stream)
 
     // <- e, ee, s, es
-    internals.handshakestate_ReadMessage(&handshake_state, stream)
+    internals.handshakestate_read_message(&handshake_state, stream)
 
     // -> s, se
-    res1, res2, status := internals.handshakestate_WriteMessage(&handshake_state, stream)
+    res1, res2, status := internals.handshakestate_write_message(&handshake_state, stream)
 
     #partial switch status {
         case .Ok: {
@@ -137,8 +137,25 @@ step_connection :: proc(potential_connection: ^Connection, handshake_state: ^Han
     status : NoiseError
     if handshake_state.initiator {
         if handshake_state.current_pattern % 2 == 0 {
-            internals.handshakestate_WriteMessage(handshake_state, potential_connection.socket)
+            initiator_cipherstate, responder_cipherstate, status = internals.handshakestate_write_message(handshake_state, potential_connection.socket)
+        } else {
+            initiator_cipherstate, responder_cipherstate, status = internals.handshakestate_read_message(handshake_state, potential_connection.socket)
         }
+    } else {
+        if handshake_state.current_pattern % 2 == 0 {
+            initiator_cipherstate, responder_cipherstate, status = internals.handshakestate_read_message(handshake_state, potential_connection.socket)
+        } else {
+            initiator_cipherstate, responder_cipherstate, status = internals.handshakestate_write_message(handshake_state, potential_connection.socket)
+        }
+    }
+
+    #partial switch status {
+        case .Handshake_complete:
+            return .complete
+        case .Unfinished_handshake:
+            return .pending
+        case:
+            return .error
     }
 }
 
@@ -151,13 +168,13 @@ accept_connection_all_the_way :: proc(stream: net.TCP_Socket, peer: net.Endpoint
     handshakestate := internals.handshakestate_Initialize(false, nil, s, internals.keypair_empty(), zeroslice, zeroslice);
 
     // <- e
-    C1, C2, status := internals.handshakestate_ReadMessage(&handshakestate, stream)
+    C1, C2, status := internals.handshakestate_read_message(&handshakestate, stream)
 
     // -> e, ee, s, es
-    C1, C2, status = internals.handshakestate_WriteMessage(&handshakestate, stream)
+    C1, C2, status = internals.handshakestate_write_message(&handshakestate, stream)
 
      // <- s, se
-    C1, C2, status = internals.handshakestate_ReadMessage(&handshakestate, stream)
+    C1, C2, status = internals.handshakestate_read_message(&handshakestate, stream)
 
     fmt.println("returning Connection!!")
     #partial switch status {
@@ -183,8 +200,7 @@ connection_nullcon :: proc() -> Connection {
     return Connection{
         initiator_cipherstate = internals.cipherstate_InitializeKey(zeroslice), 
         responder_cipherstate = internals.cipherstate_InitializeKey(zeroslice), 
-        socket = net.TCP_Socket(0), 
-        peer = ""
+        socket = net.TCP_Socket(0),
     }
 }
 
