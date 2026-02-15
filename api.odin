@@ -211,6 +211,7 @@ accept_connection_all_the_way :: proc(
             }, .Ok
         }
         case: {
+            fmt.println(status)
             return connection_nullcon(), .Io
         }
     }
