@@ -697,6 +697,7 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: net.TCP_Sock
                 if cipherstate_HasKey(&self.symmetricstate.cipherstate) {
                     rs : [DHLEN+16]u8
                     net.recv_tcp(message, rs[:])
+                    fmt.println(rs)
                     rs_buffer := cryptobuffer_from_slice(rs[:])
                     temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
                     new_rs := array32_from_slice(temp[:])
