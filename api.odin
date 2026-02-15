@@ -200,9 +200,9 @@ accept_connection_all_the_way :: proc(
      // <- s, se
     C1, C2, status = internals.handshakestate_read_message(&handshakestate, stream)
 
-    fmt.println("returning Connection!!")
     #partial switch status {
         case .Ok:  {
+            fmt.println("returning Connection!!")
             return Connection {
                 initiator_cipherstate = C1,
                 responder_cipherstate = C2,
