@@ -26,6 +26,7 @@ parse_protocol_string :: internals.parse_protocol_string
 
 
 connection_send :: proc(self: ^Connection, message: []u8) -> NoiseError {
+    fmt.println("calling connection_send")
     buffer := make_dynamic_array([dynamic]u8)
     defer delete_dynamic_array(buffer)
     ciphertext : internals.CryptoBuffer
