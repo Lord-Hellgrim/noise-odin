@@ -26,25 +26,25 @@ parse_protocol_string :: internals.parse_protocol_string
 
 
 connection_send :: proc(self: ^Connection, message: []u8) -> NoiseError {
-        buffer := make_dynamic_array([dynamic]u8)
-        defer delete_dynamic_array(buffer)
-        ciphertext : internals.CryptoBuffer
-        switch self.initiator {
-            case true: {
-                ciphertext = internals.cipherstate_EncryptWithAd(&self.initiator_cipherstate, nil, message)
-            }
-            case false: {
-                ciphertext = internals.cipherstate_EncryptWithAd(&self.responder_cipherstate, nil, message)
-            }
+    buffer := make_dynamic_array([dynamic]u8)
+    defer delete_dynamic_array(buffer)
+    ciphertext : internals.CryptoBuffer
+    switch self.initiator {
+        case true: {
+            ciphertext = internals.cipherstate_EncryptWithAd(&self.initiator_cipherstate, nil, message)
         }
-        ciphertext_len := internals.to_le_bytes(u64(len(ciphertext.main_body) + 28))
-        // extend_from_slice(&buffer, ciphertext_len[:])
-        // extend_from_slice(&buffer, ciphertext[:])
-        net.send_tcp(self.socket, ciphertext_len[:])
-        net.send_tcp(self.socket, ciphertext.main_body)
-        net.send_tcp(self.socket, ciphertext.tag[:])
-        return .Ok
+        case false: {
+            ciphertext = internals.cipherstate_EncryptWithAd(&self.responder_cipherstate, nil, message)
+        }
     }
+    ciphertext_len := internals.to_le_bytes(u64(len(ciphertext.main_body) + 16))
+    // extend_from_slice(&buffer, ciphertext_len[:])
+    // extend_from_slice(&buffer, ciphertext[:])
+    net.send_tcp(self.socket, ciphertext_len[:])
+    net.send_tcp(self.socket, ciphertext.main_body)
+    net.send_tcp(self.socket, ciphertext.tag[:])
+    return .Ok
+}
 
 connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseError) {
     size_buffer : [8]u8
