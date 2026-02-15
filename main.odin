@@ -16,7 +16,8 @@ when ODIN_OS == .Linux {
         keypair := keypair_random(DEFAULT_PROTOCOL)
         connection, status := accept_connection_all_the_way(new_socket, peer, keypair)
         fmt.println("Connection status: %v", status)
-        data, _ := connection_receive(&connection)
+        data, status := connection_receive(&connection)
+        fmt.println("status of connection_receive: %v", status)
         message := strings.clone_from_bytes(data)
         fmt.println(message)
     
