@@ -13,7 +13,7 @@ when ODIN_OS == .Linux {
             fmt.println("Listening for connections...")
             new_socket, peer, _ := net.accept_tcp(listener)
             keypair := keypair_random(DEFAULT_PROTOCOL)
-            connection, status := accept_connection_all_the_way(new_socket, keypair)
+            connection, status := accept_connection_all_the_way(new_socket, peer, keypair)
             data, _ := connection_receive(&connection)
             fmt.println(data)
         }
