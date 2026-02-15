@@ -1,12 +1,6 @@
 package noise
 
-import "core:crypto/aead"
-import "core:os"
 import "core:fmt"
-import "core:crypto"
-import "core:slice"
-import "core:strings"
-import "core:time"
 import "core:net"
 
 
@@ -19,7 +13,7 @@ when ODIN_OS == .Linux {
             fmt.println("Listening for connections...")
             new_socket, peer, _ := net.accept_tcp(listener)
             keypair := keypair_random(DEFAULT_PROTOCOL)
-            connection, status := ACCEPT_CONNECTION(new_socket, keypair)
+            connection, status := accept_connection_all_the_way(new_socket, keypair)
             data, _ := connection_receive(&connection)
             fmt.println(data)
         }
