@@ -246,8 +246,8 @@ ENCRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, plaintext: []u8, protocol: Proto
     iv := nonce_from_u64(n)
     
     aead.init(&ctx, aead.Algorithm.AES_GCM_256, k[:])
-    aead.seal_ctx(&ctx, plaintext, tag[:], iv[:], ad, plaintext)
     fmt.println("Seal ctx??")
+    aead.seal_ctx(&ctx, plaintext, tag[:], iv[:], ad, plaintext)
     
     ciphertext.tag = tag
     ciphertext.main_body = plaintext
