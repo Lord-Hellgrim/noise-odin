@@ -204,7 +204,7 @@ accept_connection_all_the_way :: proc(
     fmt.println("status at s, se: %v", status)
 
     #partial switch status {
-        case .Ok:  {
+        case .Handshake_Complete:  {
             fmt.println("returning Connection!!")
             return Connection {
                 initiator_cipherstate = C1,
