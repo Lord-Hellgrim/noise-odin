@@ -779,6 +779,7 @@ u64_from_be_slice :: proc(slice: []u8) -> u64 {
 }
 
 cryptobuffer_from_slice :: proc(slice: []u8) -> CryptoBuffer {
+    fmt.println("Len of slice: %v", len(slice))
     assert(len(slice) > 16)
     length := len(slice)-16
     return CryptoBuffer{
