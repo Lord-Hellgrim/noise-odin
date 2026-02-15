@@ -602,6 +602,7 @@ handshakestate_write_message :: proc(self: ^HandshakeState, message_buffer: net.
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1;
     for token in pattern {
+        fmt.println(token)
         switch token {
             case .e: {
                 self.e = GENERATE_KEYPAIR(self.symmetricstate.cipherstate.protocol)
@@ -681,6 +682,7 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: net.TCP_Sock
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1
     for token in pattern {
+        fmt.println(token)
         switch token {
             case .e: {
                 e : [DHLEN]u8
