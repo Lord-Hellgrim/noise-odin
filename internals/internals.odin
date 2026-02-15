@@ -234,7 +234,7 @@ CryptoBuffer :: struct {
 /// The entire ciphertext must be indistinguishable from random if the key is secret 
 /// (note that this is an additional requirement that isn't necessarily met by all AEAD schemes).
 ENCRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, plaintext: []u8, protocol: Protocol) -> (CryptoBuffer, NoiseStatus) {
-
+    fmt.println("Calling ENCRYPT")
     plaintext := plaintext
 
     k := k
@@ -386,6 +386,7 @@ cipherstate_HasKey :: proc(self: ^CipherState) -> bool {
 
 ///If k is non-empty returns ENCRYPT(k, n++, ad, plaintext). Otherwise returns plaintext.
 cipherstate_EncryptWithAd :: proc(self: ^CipherState, ad: []u8, plaintext: []u8) -> CryptoBuffer {
+    fmt.println("calling cipherstate_EncryptWithAd")
     if cipherstate_HasKey(self) {
         temp, encrypt_error := ENCRYPT(self.k, self.n, ad, plaintext, self.protocol)
         self.n += 1;
