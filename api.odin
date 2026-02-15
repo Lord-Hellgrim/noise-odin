@@ -193,12 +193,15 @@ accept_connection_all_the_way :: proc(
 
     // <- e
     C1, C2, status := internals.handshakestate_read_message(&handshakestate, stream)
+    fmt.println("status at e: %v", status)
 
     // -> e, ee, s, es
     C1, C2, status = internals.handshakestate_write_message(&handshakestate, stream)
+    fmt.println("status at e, ee, s, es: %v", status)
 
      // <- s, se
     C1, C2, status = internals.handshakestate_read_message(&handshakestate, stream)
+    fmt.println("status at s, se: %v", status)
 
     #partial switch status {
         case .Ok:  {
@@ -215,7 +218,6 @@ accept_connection_all_the_way :: proc(
             return connection_nullcon(), .Io
         }
     }
-
 }
 
 
