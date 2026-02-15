@@ -28,6 +28,7 @@ when ODIN_OS == .Linux {
         message_bytes := transmute([]u8)message
         connection, connection_error := initiate_connection_all_the_way("127.0.0.1:3001")
         fmt.println(connection_error)
-        connection_send(&connection, message_bytes)
+        send_status := connection_send(&connection, message_bytes)
+        fmt.println(send_status)
     }
 }
