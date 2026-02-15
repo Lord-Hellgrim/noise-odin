@@ -17,7 +17,6 @@ when ODIN_OS == .Linux {
             data, _ := connection_receive(&connection)
             fmt.println(data)
         }
-    
     }
 } else when ODIN_OS == .Windows {
     main :: proc() {
@@ -26,6 +25,5 @@ when ODIN_OS == .Linux {
         connection, connection_error := initiate_connection_all_the_way("127.0.0.1:3001")
         fmt.println(connection_error)
         connection_send(&connection, message)
-
     }
 }
