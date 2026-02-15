@@ -52,7 +52,7 @@ connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseError) {
 
     data_len := internals.u64_from_le_slice(size_buffer[:])
     if data_len >  internals.MAX_PACKET_SIZE {
-        fmt.println("herere")
+        fmt.println("data_len: %v", data_len)
         return nil, .Io
     }
     data := make_dynamic_array([dynamic]u8)
