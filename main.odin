@@ -10,15 +10,15 @@ when ODIN_OS == .Linux {
         address, _ := net.parse_ip4_address("127.0.0.1")
         endpoint := net.Endpoint{address = address, port = 3001}
         listener, _ := net.listen_tcp(endpoint)
-        for {
-            fmt.println("Listening for connections...")
-            new_socket, peer, _ := net.accept_tcp(listener)
-            keypair := keypair_random(DEFAULT_PROTOCOL)
-            connection, status := accept_connection_all_the_way(new_socket, peer, keypair)
-            data, _ := connection_receive(&connection)
-            message := strings.clone_from_bytes(data)
-            fmt.println(message)
-        }
+        
+        fmt.println("Listening for connections...")
+        new_socket, peer, _ := net.accept_tcp(listener)
+        keypair := keypair_random(DEFAULT_PROTOCOL)
+        connection, status := accept_connection_all_the_way(new_socket, peer, keypair)
+        data, _ := connection_receive(&connection)
+        message := strings.clone_from_bytes(data)
+        fmt.println(message)
+    
     }
 } else when ODIN_OS == .Windows {
     main :: proc() {
