@@ -26,7 +26,7 @@ when ODIN_OS == .Linux {
 } else when ODIN_OS == .Windows {
     main :: proc() {
         message := "This is a message that is longer than 128 bytes. Definately longer than 128 bytes by now. I probably don't have to keep typing"
-        message_bytes := slice.clone_from_bytes(transmute([]u8)message)
+        message_bytes := slice.clone(transmute([]u8)message)
         connection, connection_error := initiate_connection_all_the_way("127.0.0.1:3001")
         fmt.println(connection_error)
         send_status := connection_send(&connection, message_bytes)
