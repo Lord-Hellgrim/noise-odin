@@ -39,11 +39,13 @@ connection_send :: proc(self: ^Connection, message: []u8) -> NoiseError {
     }
     ciphertext_len := internals.to_le_bytes(u64(len(ciphertext.main_body) + 16))
     fmt.println("ciphertext_len: %v", ciphertext_len)
-    // extend_from_slice(&buffer, ciphertext_len[:])
-    // extend_from_slice(&buffer, ciphertext[:])
-    net.send_tcp(self.socket, ciphertext_len[:])
-    net.send_tcp(self.socket, ciphertext.main_body)
-    net.send_tcp(self.socket, ciphertext.tag[:])
+    internals.extend_from_slice(&buffer, ciphertext_len[:])
+    internals.extend_from_slice(&buffer, ciphertext.main_body[:])
+    internals.extend_from_slice(&buffer, ciphertext.tag[:])
+    net.send_tcp(self.socket, buffer[:])
+    // net.send_tcp(self.socket, ciphertext_len[:])
+    // net.send_tcp(self.socket, ciphertext.main_body)
+    // net.send_tcp(self.socket, ciphertext.tag[:])
     return .Ok
 }
 
