@@ -17,7 +17,12 @@ Connection :: struct {
     initiator: bool,
 }
 
+DEFAULT_PROTOCOL_NAME :: internals.DEFAULT_PROTOCOL_NAME
+DEFAULT_PROTOCOL :: internals.DEFAULT_PROTOCOL
+
 keypair_random :: internals.keypair_random
+
+parse_protocol_string :: internals.parse_protocol_string
 
 
 connection_send :: proc(self: ^Connection, message: []u8) -> NoiseError {
@@ -82,13 +87,13 @@ connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseError) {
 
 
 initiate_connection_all_the_way :: proc(address: string, protocol_name := internals.DEFAULT_PROTOCOL_NAME) -> (Connection, NoiseError) {
-    protocol, invalid_protocol := internals.parse_protocol_string(protocol_name)
-    if invalid_protocol == .Protocol_could_not_be_parsed {
+    protocol, parse_error := internals.parse_protocol_string(protocol_name)
+    if parse_error == .Protocol_could_not_be_parsed {
         return connection_nullcon(), .Protocol_could_not_be_parsed
     }
     zeroslice : [internals.DHLEN]u8
-    peer, parsing_failed := net.parse_endpoint(address)
-    if parsing_failed {
+    peer, parsing_status := net.parse_endpoint(address)
+    if parsing_status == false {
         return connection_nullcon(), .invalid_address
     }
     stream, _ := net.dial_tcp(peer)
@@ -180,8 +185,8 @@ accept_connection_all_the_way :: proc(
     protocol_name := internals.DEFAULT_PROTOCOL_NAME
 ) -> (Connection, NoiseError) {
     zeroslice : [internals.DHLEN]u8
-    protocol, protocol_could_not_be_parsed := internals.parse_protocol_string(protocol_name)
-    if protocol_could_not_be_parsed {
+    protocol, protocol_parse_error := internals.parse_protocol_string(protocol_name)
+    if protocol_parse_error == .Protocol_could_not_be_parsed {
         return connection_nullcon(), .Protocol_could_not_be_parsed
     }
     handshakestate, proto := internals.handshakestate_Initialize(false, nil, s, internals.keypair_empty(protocol), zeroslice, zeroslice);

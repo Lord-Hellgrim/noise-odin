@@ -113,42 +113,42 @@ ERROR_PROTOCOL :: Protocol {
     hash = nil
 }
 
-parse_protocol_string :: proc(protocol_string: string) -> (Protocol, bool) {
+parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus) {
     // Default protocol string "Noise_XX_25519_AESGCM_SHA512"
 
     if len(protocol_string) > 50 {
-        return ERROR_PROTOCOL, false
+        return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
     protocol : Protocol
     split := strings.split(protocol_string, "_")
     defer delete(split)
     if len(split) != 5 {
-        return ERROR_PROTOCOL, false
+        return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
     switch split[1] {
         case "XX": protocol.handshake_pattern = .XX
         case "NK": protocol.handshake_pattern = .NK
-        case: return ERROR_PROTOCOL, false
+        case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
     switch split[2] {
         case "25519": protocol.dh = .x25519
-        case: return ERROR_PROTOCOL, false
+        case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
     switch split[3] {
         case "AESGCM": protocol.cipher = .AES256gcm
-        case: return ERROR_PROTOCOL, false
+        case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
     switch split[4] {
         case "SHA512": protocol.hash = .SHA512
-        case: return ERROR_PROTOCOL, false
+        case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
-    return protocol, true
+    return protocol, .Ok
 
 }
 
@@ -429,8 +429,8 @@ cipherstate_Rekey :: proc(self: ^CipherState) {
 /// Calls InitializeKey(empty).
 symmetricstate_InitializeSymmetric :: proc(protocol_name: string) -> (SymmetricState, NoiseStatus) {
     zeroslice : [DHLEN]u8
-    protocol, protocol_could_not_be_parsed := parse_protocol_string(protocol_name)
-    if protocol_could_not_be_parsed {
+    protocol, parse_error := parse_protocol_string(protocol_name)
+    if parse_error == .Protocol_could_not_be_parsed {
         return SymmetricState{}, .Protocol_could_not_be_parsed
     }
     if len(protocol_name) < HASHLEN {
