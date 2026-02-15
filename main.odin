@@ -2,6 +2,7 @@ package noise
 
 import "core:fmt"
 import "core:net"
+import "core:strings"
 
 
 when ODIN_OS == .Linux {
@@ -15,15 +16,16 @@ when ODIN_OS == .Linux {
             keypair := keypair_random(DEFAULT_PROTOCOL)
             connection, status := accept_connection_all_the_way(new_socket, peer, keypair)
             data, _ := connection_receive(&connection)
-            fmt.println(data)
+            message := strings.clone_from_bytes(data)
+            fmt.println(message)
         }
     }
 } else when ODIN_OS == .Windows {
     main :: proc() {
-        message := make([]u8, 200)
-        message = {3}
+        message := "This is a message that is longer than 128 bytes. Definately longer than 128 bytes by now. I probably don't have to keep typing"
+        message_bytes := transmute([]u8)message
         connection, connection_error := initiate_connection_all_the_way("127.0.0.1:3001")
         fmt.println(connection_error)
-        connection_send(&connection, message)
+        connection_send(&connection, message_bytes)
     }
 }
