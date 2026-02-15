@@ -224,7 +224,6 @@ DH :: proc(key_pair: KeyPair, public_key: [DHLEN]u8, protocol: Protocol) -> [DHL
 
 
 CryptoBuffer :: struct {
-    iv: [12]u8,
     main_body: []u8,
     tag: [16]u8,
 }
@@ -245,12 +244,10 @@ ENCRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, plaintext: []u8, protocol: Proto
 
     ctx : aead.Context
     iv := nonce_from_u64(n)
-    crypto.rand_bytes(iv[:])
     
     aead.init(&ctx, aead.Algorithm.AES_GCM_256, k[:])
     aead.seal_ctx(&ctx, plaintext, tag[:], iv[:], ad, plaintext)
     
-    ciphertext.iv = iv
     ciphertext.tag = tag
     ciphertext.main_body = plaintext
 
@@ -266,7 +263,7 @@ DECRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, ciphertext: CryptoBuffer, protoc
     k := k
     
     ctx : aead.Context
-    iv := ciphertext.iv
+    iv := nonce_from_u64(n)
     tag := ciphertext.tag
 
     aead.init(&ctx, aead.Algorithm.AES_GCM_256, k[:])
@@ -494,7 +491,7 @@ symmetricstate_GetHandshakeHash :: proc(self: ^SymmetricState) -> [HASHLEN]u8 {
 /// Note that if k is empty, the EncryptWithAd() call will set ciphertext equal to plaintext.
 symmetricstate_EncryptAndHash :: proc(self:  ^SymmetricState, plaintext: []u8) -> CryptoBuffer{
     ciphertext := cipherstate_EncryptWithAd(&self.cipherstate, self.h[:], plaintext)
-    symmetricstate_MixHash(self, ciphertext.iv[:], ciphertext.main_body, ciphertext.tag[:])
+    symmetricstate_MixHash(self, ciphertext.main_body, ciphertext.tag[:])
     return ciphertext
 }
 
@@ -503,7 +500,7 @@ symmetricstate_EncryptAndHash :: proc(self:  ^SymmetricState, plaintext: []u8) -
 symmetricstate_DecryptAndHash :: proc(self:  ^SymmetricState, ciphertext: CryptoBuffer) -> ([]u8, NoiseStatus) {
     ciphertext := ciphertext
     result, decrypt_error := cipherstate_DecryptWithAd(&self.cipherstate, self.h[:], ciphertext)
-    symmetricstate_MixHash(self, ciphertext.iv[:], ciphertext.main_body, ciphertext.tag[:])
+    symmetricstate_MixHash(self, ciphertext.main_body, ciphertext.tag[:])
     return result, .Ok
 }
 
@@ -613,7 +610,6 @@ handshakestate_write_message :: proc(self: ^HandshakeState, message_buffer: net.
             }
             case .s: {
                 temp := symmetricstate_EncryptAndHash(&self.symmetricstate, self.s.public_key[:])
-                net.send_tcp(message_buffer, temp.iv[:])
                 net.send_tcp(message_buffer, temp.main_body)
                 net.send_tcp(message_buffer, temp.tag[:])
             }
@@ -782,14 +778,10 @@ u64_from_be_slice :: proc(slice: []u8) -> u64 {
 }
 
 cryptobuffer_from_slice :: proc(slice: []u8) -> CryptoBuffer {
-    assert(len(slice) > 28)
-    length := len(slice)-28
+    assert(len(slice) > 16)
+    length := len(slice)-16
     return CryptoBuffer{
-        iv = {slice[0], slice[1], slice[2], slice[3],
-                slice[4], slice[5], slice[6], slice[7], 
-                slice[8], slice[9], slice[10], slice[11]
-            },
-        main_body = slice[12:length],
+        main_body = slice[:len(slice)-16],
         tag = {slice[length +0], slice[length +1], slice[length +2], slice[length +3],
                 slice[length +4], slice[length +5], slice[length +6], slice[length +7],
                 slice[length +8], slice[length +9], slice[length +10],slice[length +11],
