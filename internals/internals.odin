@@ -743,7 +743,7 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: net.TCP_Sock
             }
         };
     }
-    if self.current_pattern > len(self.message_patterns) {
+    if self.current_pattern == len(self.message_patterns) {
         sender, receiver := symmetricstate_Split(&self.symmetricstate)
         self.current_pattern = 0
         return sender, receiver, .Handshake_Complete
