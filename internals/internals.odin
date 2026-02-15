@@ -647,7 +647,7 @@ handshakestate_write_message :: proc(self: ^HandshakeState, message_buffer: net.
         };
     }
     
-    if self.current_pattern > len(self.message_patterns) {
+    if self.current_pattern == len(self.message_patterns) {
         sender, receiver := symmetricstate_Split(&self.symmetricstate)
         self.current_pattern = 0
         return sender, receiver, .Ok
