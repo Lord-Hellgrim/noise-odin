@@ -30,7 +30,7 @@ OPAD: [BLOCKLEN]u8 : 0x5c
 
 MAX_PACKET_SIZE: u64 : 65535;
 
-DEFAULT_PROTOCOL_NAME :: "Noise_NK_25519_AESGCM_SHA512";
+DEFAULT_PROTOCOL_NAME :: "Noise_XX_25519_AESGCM_SHA512";
 
 
 DhType :: enum {
@@ -99,58 +99,56 @@ Protocol :: struct {
     hash: HashType,
 }
 
-@(private)
-DEFAULT_PROTOCOL := Protocol {
+DEFAULT_PROTOCOL :: Protocol {
     handshake_pattern = .XX,
     dh = .x25519,
     cipher = .AES256gcm,
     hash = .SHA512
 }
 
-@(private)
-ERROR_PROTOCOL := Protocol {
-    handshake_pattern = {},
+ERROR_PROTOCOL :: Protocol {
+    handshake_pattern = nil,
     dh = nil,
     cipher = nil,
     hash = nil
 }
 
-parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus) {
+parse_protocol_string :: proc(protocol_string: string) -> (Protocol, bool) {
     // Default protocol string "Noise_XX_25519_AESGCM_SHA512"
 
     if len(protocol_string) > 50 {
-        return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
+        return ERROR_PROTOCOL, false
     }
 
     protocol : Protocol
     split := strings.split(protocol_string, "_")
     defer delete(split)
     if len(split) != 5 {
-        return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
+        return ERROR_PROTOCOL, false
     }
 
     switch split[1] {
         case "XX": protocol.handshake_pattern = .XX
         case "NK": protocol.handshake_pattern = .NK
-        case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
+        case: return ERROR_PROTOCOL, false
     }
 
     switch split[2] {
         case "25519": protocol.dh = .x25519
-        case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
+        case: return ERROR_PROTOCOL, false
     }
 
     switch split[3] {
         case "AESGCM": protocol.cipher = .AES256gcm
-        case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
+        case: return ERROR_PROTOCOL, false
     }
 
     switch split[4] {
         case "SHA512": protocol.hash = .SHA512
-        case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
+        case: return ERROR_PROTOCOL, false
     }
 
-    return protocol, .Ok
+    return protocol, true
 
 }
 
@@ -431,8 +429,8 @@ cipherstate_Rekey :: proc(self: ^CipherState) {
 /// Calls InitializeKey(empty).
 symmetricstate_InitializeSymmetric :: proc(protocol_name: string) -> (SymmetricState, NoiseStatus) {
     zeroslice : [DHLEN]u8
-    protocol, parse_error := parse_protocol_string(protocol_name)
-    if parse_error == .Protocol_could_not_be_parsed {
+    protocol, protocol_could_not_be_parsed := parse_protocol_string(protocol_name)
+    if protocol_could_not_be_parsed {
         return SymmetricState{}, .Protocol_could_not_be_parsed
     }
     if len(protocol_name) < HASHLEN {

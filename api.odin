@@ -6,7 +6,6 @@ import "core:net"
 import "core:fmt"
 
 
-
 NoiseError :: internals.NoiseStatus
 
 
@@ -82,21 +81,26 @@ connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseError) {
 }
 
 
-initiate_connection_all_the_way :: proc(address: string) -> (Connection, NoiseError) {
+initiate_connection_all_the_way :: proc(address: string, protocol_name := internals.DEFAULT_PROTOCOL_NAME) -> (Connection, NoiseError) {
+    protocol, invalid_protocol := internals.parse_protocol_string(protocol_name)
+    if invalid_protocol == .Protocol_could_not_be_parsed {
+        return connection_nullcon(), .Protocol_could_not_be_parsed
+    }
     zeroslice : [internals.DHLEN]u8
     peer, parsing_failed := net.parse_endpoint(address)
     if parsing_failed {
         return connection_nullcon(), .invalid_address
     }
     stream, _ := net.dial_tcp(peer)
-    s := internals.keypair_random()
-    handshake_state := internals.handshakestate_Initialize(
+    s := internals.keypair_random(protocol)
+    handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
         true,
         nil,
         s,
-        internals.keypair_empty(),
+        internals.keypair_empty(protocol),
         zeroslice,
-        zeroslice
+        zeroslice,
+        protocol_name = protocol_name
     )
     
     // -> e
@@ -134,8 +138,6 @@ ConnectionStatus :: enum {
 
 step_connection :: proc(potential_connection: ^Connection, handshake_state: ^HandshakeState) -> ConnectionStatus{
 
-    
-
     initiator_cipherstate, responder_cipherstate : internals.CipherState
     status : NoiseError = nil
     if handshake_state.initiator {
@@ -171,9 +173,18 @@ KeyPair :: internals.KeyPair
 
 HandshakeState :: internals.HandshakeState
 
-accept_connection_all_the_way :: proc(stream: net.TCP_Socket, peer: net.Endpoint, s: KeyPair) -> (Connection, NoiseError) {
+accept_connection_all_the_way :: proc(
+    stream: net.TCP_Socket, 
+    peer: net.Endpoint, 
+    s: KeyPair, 
+    protocol_name := internals.DEFAULT_PROTOCOL_NAME
+) -> (Connection, NoiseError) {
     zeroslice : [internals.DHLEN]u8
-    handshakestate := internals.handshakestate_Initialize(false, nil, s, internals.keypair_empty(), zeroslice, zeroslice);
+    protocol, protocol_could_not_be_parsed := internals.parse_protocol_string(protocol_name)
+    if protocol_could_not_be_parsed {
+        return connection_nullcon(), .Protocol_could_not_be_parsed
+    }
+    handshakestate, proto := internals.handshakestate_Initialize(false, nil, s, internals.keypair_empty(protocol), zeroslice, zeroslice);
 
     // <- e
     C1, C2, status := internals.handshakestate_read_message(&handshakestate, stream)
@@ -206,8 +217,8 @@ accept_connection_all_the_way :: proc(stream: net.TCP_Socket, peer: net.Endpoint
 connection_nullcon :: proc() -> Connection {
     zeroslice : [internals.DHLEN]u8
     return Connection{
-        initiator_cipherstate = internals.cipherstate_InitializeKey(zeroslice), 
-        responder_cipherstate = internals.cipherstate_InitializeKey(zeroslice), 
+        initiator_cipherstate = internals.cipherstate_InitializeKey(zeroslice, internals.ERROR_PROTOCOL), 
+        responder_cipherstate = internals.cipherstate_InitializeKey(zeroslice, internals.ERROR_PROTOCOL), 
         socket = net.TCP_Socket(0),
     }
 }
