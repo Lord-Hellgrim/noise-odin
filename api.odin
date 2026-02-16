@@ -17,12 +17,20 @@ Connection :: struct {
     initiator: bool,
 }
 
+
 DEFAULT_PROTOCOL_NAME :: internals.DEFAULT_PROTOCOL_NAME
 DEFAULT_PROTOCOL :: internals.DEFAULT_PROTOCOL
 
 keypair_random :: internals.keypair_random
 
 parse_protocol_string :: internals.parse_protocol_string
+
+// levels of abstraction
+// Top -> send_data(data, address)
+// level 1 -> open, send/receive, close
+// level 2 -> step_by_step_open, use, close
+// level 3 -> step_by_step open, user handles sockets
+
 
 
 connection_send :: proc(self: ^Connection, message: []u8) -> NoiseError {
@@ -49,6 +57,7 @@ connection_send :: proc(self: ^Connection, message: []u8) -> NoiseError {
     // net.send_tcp(self.socket, ciphertext.tag[:])
     return .Ok
 }
+
 
 connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseError) {
     size_buffer : [8]u8
@@ -139,12 +148,14 @@ initiate_connection_all_the_way :: proc(address: string, protocol_name := intern
 
 }
 
+
 ConnectionStatus :: enum {
     pending,
     complete,
     error,
     io_error,
 }
+
 
 step_connection :: proc(potential_connection: ^Connection, handshake_state: ^HandshakeState) -> ConnectionStatus{
 
@@ -179,14 +190,17 @@ step_connection :: proc(potential_connection: ^Connection, handshake_state: ^Han
     }
 }
 
+
 KeyPair :: internals.KeyPair
+
 
 HandshakeState :: internals.HandshakeState
 
+
 accept_connection_all_the_way :: proc(
-    stream: net.TCP_Socket, 
-    peer: net.Endpoint, 
-    s: KeyPair, 
+    stream: net.TCP_Socket,
+    peer: net.Endpoint,
+    s: KeyPair,
     protocol_name := internals.DEFAULT_PROTOCOL_NAME
 ) -> (Connection, NoiseError) {
     zeroslice : [internals.DHLEN]u8
@@ -224,7 +238,6 @@ accept_connection_all_the_way :: proc(
         }
     }
 }
-
 
 
 connection_nullcon :: proc() -> Connection {

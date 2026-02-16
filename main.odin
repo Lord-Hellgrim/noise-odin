@@ -6,6 +6,10 @@ import "core:strings"
 import "core:slice"
 
 
+multi_return :: proc(a: int, b: int, c := 1, d := 2) -> int {
+    return a+b+c+d
+}
+
 when ODIN_OS == .Linux {
     main :: proc() {
         address, _ := net.parse_ip4_address("127.0.0.1")
