@@ -29,8 +29,8 @@ parse_protocol_string :: internals.parse_protocol_string
 // Top -> send_data(data, address)
 // level 1 -> open, send/receive, close
 // level 2 -> step_by_step_open, use, close
-// level 3 -> step_by_step open, user handles sockets
-
+// level 3 -> step_by_step open, user handles sockets, prepare for sending/receiving
+// level 4 -> ???
 
 
 connection_send :: proc(self: ^Connection, message: []u8) -> NoiseError {
