@@ -26,7 +26,7 @@ keypair_random :: internals.keypair_random
 parse_protocol_string :: internals.parse_protocol_string
 
 // levels of abstraction
-// Top -> send_data(data, address)
+// Top -> send_data(data, address) Cache connection details in global data
 // level 1 -> open, send/receive, close
 // level 2 -> step_by_step_open, use, close
 // level 3 -> step_by_step open, user handles sockets, prepare for sending/receiving
