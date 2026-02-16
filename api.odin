@@ -27,10 +27,11 @@ parse_protocol_string :: internals.parse_protocol_string
 
 // levels of abstraction
 // Top -> send_data(data, address) Cache connection details in global data
-// level 1 -> open, send/receive, close
-// level 2 -> step_by_step_open, use, close
-// level 3 -> step_by_step open, user handles sockets, prepare for sending/receiving
-// level 4 -> ???
+// level 1 -> open/accept, send/receive, close
+// level 2 -> step_by_step_open, send/receive all (calls send_receive until EOF), close
+// level 3 -> step_by_step_open, step_by_step send/receive ( mostly receive ), close
+// level 4 -> step_by_step open, user handles sockets, prepare for sending/receiving
+// level 5 -> ???
 
 
 connection_send :: proc(self: ^Connection, message: []u8) -> NoiseError {
