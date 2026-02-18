@@ -133,7 +133,7 @@ initiate_connection_all_the_way :: proc(address: string, protocol_name := intern
     // -> s, se
     res1, res2, status := internals.handshakestate_write_message(&handshake_state, stream)
 
-    fmt.println(handshakestate)
+    fmt.println(handshake_state)
 
 
     #partial switch status {
