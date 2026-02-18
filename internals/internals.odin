@@ -5,6 +5,7 @@ import "core:crypto"
 import "core:crypto/x25519"
 import "core:crypto/aead"
 import "core:crypto/sha2"
+import "core:crypto/ecdh"
 
 import "core:slice"
 import "core:strings"
@@ -159,7 +160,6 @@ parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus
 
 
 
-
 KeyPair :: struct {
     public_key: [DHLEN]u8,
     private_key: [DHLEN]u8,
@@ -199,7 +199,6 @@ NoiseStatus :: enum {
 }
 
 
-
 /// Generates a new Diffie-Hellman key pair. A DH key pair consists of public_key and private_key elements. 
 /// A public_key represents an encoding of a DH public key into a byte sequence of length DHLEN. 
 /// The public_key encoding details are specific to each set of DH functions.
@@ -220,13 +219,12 @@ GENERATE_KEYPAIR :: proc(protocol: Protocol) -> KeyPair {
 DH :: proc(key_pair: KeyPair, public_key: [DHLEN]u8, protocol: Protocol) -> [DHLEN]u8 {
     key_pair := key_pair
     public_key := public_key
-    assert(key_pair.private_key != 0 && key_pair.public_key != 0);
+    assert(key_pair.private_key != 0 && key_pair.public_key != 0)
     x25519.scalarmult_basepoint(public_key[:], key_pair.private_key[:])
     shared_secret : [DHLEN]u8
     x25519.scalarmult(shared_secret[:], key_pair.private_key[:], public_key[:])
     return shared_secret
 } 
-
 
 CryptoBuffer :: struct {
     main_body: []u8,
@@ -251,7 +249,6 @@ ENCRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, plaintext: []u8, protocol: Proto
     iv := nonce_from_u64(n)
     
     aead.init(&ctx, aead.Algorithm.AES_GCM_256, k[:])
-    fmt.println("Seal ctx??")
     aead.seal_ctx(&ctx, plaintext, tag[:], iv[:], ad, plaintext)
     
     ciphertext.tag = tag
@@ -297,10 +294,11 @@ HASH :: proc(protocol: Protocol, data: ..[]u8) -> [HASHLEN]u8 {
 
 /// Returns a new 32-byte cipher key as a pseudorandom function of k. If this function is not specifically defined for some set of cipher functions, 
 /// then it defaults to returning the first 32 bytes from ENCRYPT(k,    maxnonce, zerolen, zeros), 
-/// where maxnonce equals 264-1, zerolen is a zero-length byte sequence, and zeros is a sequence of 32 bytes filled with zeros.
+/// where maxnonce equals (2^64)-1, zerolen is a zero-length byte sequence, and zeros is a sequence of 32 bytes filled with zeros.
 REKEY :: proc(k: [DHLEN]u8, protocol: Protocol) -> [DHLEN]u8 {
-    zeros : [32]u8
-    n :u64 = 0xFFFFFFFFFFFFFFFF
+    zeros : [32]u8 
+    //         1  2  3  4  5  6  7  8 
+    n :u64 = 0xFF_FF_FF_FF_FF_FF_FF_FF
     ENCRYPT(k, n, nil, zeros[:], protocol)
     new_key : [DHLEN]u8
     copy(new_key[:], zeros[:])
@@ -331,8 +329,14 @@ HKDF :: proc(chaining_key: [HASHLEN]u8, input_key_material: []u8, protocol: Prot
     assert(len(input_key_material) == 0 || len(input_key_material) == 32)
     temp_key := HMAC_HASH(chaining_key, input_key_material, protocol)
     output1 :=  HMAC_HASH(temp_key, {0x01}, protocol)
-    output2 :=  HMAC_HASH(temp_key, concat_bytes(output1[:], {0x02}), protocol)
-    output3 :=  HMAC_HASH(temp_key, concat_bytes(output2[:], {0x03}), protocol)
+
+    temp_bytes_2 := concat_bytes(output1[:], {0x02})
+    defer delete(temp_bytes_2)
+    output2 :=  HMAC_HASH(temp_key, temp_bytes_2 , protocol)
+    
+    temp_bytes_3 := concat_bytes(output2[:], {0x03})
+    defer delete(temp_bytes_3)
+    output3 :=  HMAC_HASH(temp_key, temp_bytes_3, protocol)
 
     return output1, output2, output3
 } 
@@ -471,7 +475,7 @@ symmetricstate_MixKey :: proc(self: ^SymmetricState, input_key_material: []u8) {
     input_key_material := input_key_material
     ck, temp_k, _ := HKDF(self.ck, input_key_material[:], self.cipherstate.protocol)
     self.ck = ck
-    self.cipherstate = cipherstate_InitializeKey(array32_from_slice(temp_k[:32]), self.cipherstate.protocol)
+    self.cipherstate = cipherstate_InitializeKey(array32_from_slice(temp_k[:]), self.cipherstate.protocol)
 }
 
 /// This function is used for handling pre-shared symmetric keys, as described in Section 9. It executes the following steps:
