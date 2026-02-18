@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:net"
 import "core:strings"
 import "core:slice"
+import "core:time"
 
 
 multi_return :: proc(a: int, b: int, c := 1, d := 2) -> int {
@@ -35,5 +36,6 @@ when ODIN_OS == .Linux {
         fmt.println(connection_error)
         send_status := connection_send(&connection, message_bytes)
         fmt.println(send_status)
+        time.sleep(time.Second)
     }
 }

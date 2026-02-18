@@ -76,7 +76,8 @@ connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseStatus) {
     
     for total_read < data_len {
         to_read := min(4096, data_len - total_read)
-        bytes_received, _ := net.recv_tcp(self.socket, buffer[:to_read])
+        bytes_received, status := net.recv_tcp(self.socket, buffer[:to_read])
+        fmt.println(status)
         if bytes_received == 0 {
             return nil, .Io
         }
