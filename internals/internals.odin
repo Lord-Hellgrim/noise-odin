@@ -609,20 +609,23 @@ handshakestate_Initialize :: proc(
 /// Appends EncryptAndHash(payload) to the buffer.
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
-handshakestate_write_message :: proc(self: ^HandshakeState, message_buffer: net.TCP_Socket) -> (CipherState, CipherState, NoiseStatus) {
+handshakestate_write_message :: proc(self: ^HandshakeState, message_buffer: []u8) -> (CipherState, CipherState, NoiseStatus) {
+    message_buffer := message_buffer
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1;
+    message_tracker := SliceTracker{slice = message_buffer}
     for token in pattern {
         fmt.println(token)
         switch token {
             case .e: {
                 self.e = GENERATE_KEYPAIR(self.symmetricstate.cipherstate.protocol)
-                net.send_tcp(message_buffer, self.e.public_key[:])
+                push_to_slice(&message_tracker, self.e.public_key[:])
                 symmetricstate_MixHash(&self.symmetricstate, self.e.public_key[:])
             }
             case .s: {
                 temp := symmetricstate_EncryptAndHash(&self.symmetricstate, self.s.public_key[:])
-                net.send_tcp(message_buffer, concat_bytes(temp.main_body, temp.tag[:]))
+                push_to_slice(&message_tracker, temp.main_body)
+                push_to_slice(&message_tracker, temp.tag[:])
                 // net.send_tcp(message_buffer, temp.tag[:])
             }
             case .ee: {
@@ -688,16 +691,18 @@ handshakestate_write_message :: proc(self: ^HandshakeState, message_buffer: net.
 /// Calls DecryptAndHash() on the remaining bytes of the message and stores the output into payload_buffer.
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
-handshakestate_read_message :: proc(self: ^HandshakeState, message: net.TCP_Socket)  -> (CipherState, CipherState, NoiseStatus) {
+handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (CipherState, CipherState, NoiseStatus) {
     zeroslice: [DHLEN]u8
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1
+    message_cursor := 0
     for token in pattern {
-        fmt.println(token)
+        
         switch token {
             case .e: {
                 e : [DHLEN]u8
-                net.recv_tcp(message, e[:])
+                copy(e[:], message[message_cursor : message_cursor + DHLEN])
+                message_cursor += DHLEN
                 if self.re == zeroslice {
                     self.re = e
                     symmetricstate_MixHash(&self.symmetricstate, self.re[:])
@@ -709,7 +714,21 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: net.TCP_Sock
             case .s: {
                 if cipherstate_HasKey(&self.symmetricstate.cipherstate) {
                     rs : [DHLEN+16]u8
-                    net.recv_tcp(message, rs[:])
+                    copy(rs[:], message[message_cursor : message_cursor + DHLEN+16])
+                    message_cursor += DHLEN + 16
+                    rs_buffer := cryptobuffer_from_slice(rs[:])
+                    temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
+                    new_rs := array32_from_slice(temp[:])
+                    if self.rs == zeroslice {
+                        self.rs = new_rs
+                    } else {
+                        fmt.println("Implementation error: rs was not empty when processing token 's'.\nre = %v", self.rs)
+                        panic("Implementation error: rs was not empty when processing token 's'")
+                    }
+                } else {
+                    rs : [DHLEN]u8
+                    copy(rs[:], message[message_cursor : message_cursor + DHLEN])
+                    message_cursor += DHLEN
                     rs_buffer := cryptobuffer_from_slice(rs[:])
                     temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
                     new_rs := array32_from_slice(temp[:])
@@ -888,3 +907,13 @@ slices_do_not_overlap :: proc(a: []$A, b: []$B) -> bool {
     }
 }
 
+SliceTracker :: struct {
+    slice: []u8,
+    cursor: int,
+}
+
+push_to_slice :: proc(dst: ^SliceTracker, src: []u8) -> int {
+    ret := copy(dst.slice[dst.cursor:dst.cursor+len(src)], src)
+    dst.cursor += len(src)
+    return ret
+}
