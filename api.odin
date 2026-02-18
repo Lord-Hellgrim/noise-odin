@@ -6,7 +6,7 @@ import "core:net"
 import "core:fmt"
 
 
-NoiseError :: internals.NoiseStatus
+NoiseStatus :: internals.NoiseStatus
 
 
 Connection :: struct {
@@ -34,7 +34,7 @@ parse_protocol_string :: internals.parse_protocol_string
 // level 5 -> ???
 
 
-connection_send :: proc(self: ^Connection, message: []u8) -> NoiseError {
+connection_send :: proc(self: ^Connection, message: []u8) -> NoiseStatus {
     fmt.println("calling connection_send")
     buffer := make_dynamic_array([dynamic]u8)
     defer delete_dynamic_array(buffer)
@@ -60,7 +60,7 @@ connection_send :: proc(self: ^Connection, message: []u8) -> NoiseError {
 }
 
 
-connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseError) {
+connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseStatus) {
     size_buffer : [8]u8
     net.recv_tcp(self.socket, size_buffer[:])
 
@@ -101,7 +101,7 @@ connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseError) {
 }
 
 
-initiate_connection_all_the_way :: proc(address: string, protocol_name := internals.DEFAULT_PROTOCOL_NAME) -> (Connection, NoiseError) {
+initiate_connection_all_the_way :: proc(address: string, protocol_name := internals.DEFAULT_PROTOCOL_NAME) -> (Connection, NoiseStatus) {
     protocol, parse_error := internals.parse_protocol_string(protocol_name)
     if parse_error == .Protocol_could_not_be_parsed {
         return connection_nullcon(), .Protocol_could_not_be_parsed
@@ -161,7 +161,7 @@ ConnectionStatus :: enum {
 step_connection :: proc(potential_connection: ^Connection, handshake_state: ^HandshakeState) -> ConnectionStatus{
 
     initiator_cipherstate, responder_cipherstate : internals.CipherState
-    status : NoiseError = nil
+    status : NoiseStatus = nil
     if handshake_state.initiator {
         if handshake_state.current_pattern % 2 == 0 {
             initiator_cipherstate, responder_cipherstate, status = internals.handshakestate_write_message(handshake_state, potential_connection.socket)
@@ -203,7 +203,7 @@ accept_connection_all_the_way :: proc(
     peer: net.Endpoint,
     s: KeyPair,
     protocol_name := internals.DEFAULT_PROTOCOL_NAME
-) -> (Connection, NoiseError) {
+) -> (Connection, NoiseStatus) {
     zeroslice : [internals.DHLEN]u8
     protocol, protocol_parse_error := internals.parse_protocol_string(protocol_name)
     if protocol_parse_error == .Protocol_could_not_be_parsed {

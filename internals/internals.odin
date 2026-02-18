@@ -38,14 +38,6 @@ DhType :: enum {
     x448,
 }
 
-DhLen :: proc(dh: DhType) -> int {
-    switch dh {
-        case .x25519: return 32
-        case .x448: return 56
-    }
-    return 0
-}
-
 CipherType :: enum {
     AES256gcm,
 }
@@ -53,6 +45,14 @@ CipherType :: enum {
 HashType :: enum {
     SHA256,
     SHA512,
+}
+
+DhLen :: proc(dh: DhType) -> int {
+    switch dh {
+        case .x25519: return 32
+        case .x448: return 56
+    }
+    return 0
 }
 
 HashLen :: proc(hash: HashType) -> int {
@@ -63,7 +63,7 @@ HashLen :: proc(hash: HashType) -> int {
     return 0
 }
 
-BlockLen :: proc(hash: HashType) -> int {
+BlockLen ::  proc(hash: HashType) -> int {
     switch hash {
         case .SHA256: return 64
         case .SHA512: return 128
@@ -71,25 +71,30 @@ BlockLen :: proc(hash: HashType) -> int {
     return 0
 }
 
+MAX_DHLEN :: 56
+MAX_HASHLEN :: 64
+MAX_BLOCKLEN :: 128
+
+
+// Supported handshake patterns will be listed here.
 HandshakePattern :: enum {
     XX,
     NK
 }
 
-@(private)
+@(rodata)
 PATTERN_XX : [][]Token = {
                 {.e},
                 {.e, .ee, .s, .es},
                 {.s, .se}
             }
 
-@(private)
+@(rodata)
 PATTERN_NK : [][]Token = {
                 {.s},
                 {.e, .es},
                 {.e, .ee}
             }
-
 
 
 Protocol :: struct {
