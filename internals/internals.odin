@@ -622,8 +622,8 @@ handshakestate_write_message :: proc(self: ^HandshakeState, message_buffer: net.
             }
             case .s: {
                 temp := symmetricstate_EncryptAndHash(&self.symmetricstate, self.s.public_key[:])
-                net.send_tcp(message_buffer, temp.main_body)
-                net.send_tcp(message_buffer, temp.tag[:])
+                net.send_tcp(message_buffer, concat_bytes(temp.main_body, temp.tag[:]))
+                // net.send_tcp(message_buffer, temp.tag[:])
             }
             case .ee: {
                 dh := DH(self.e, self.re, self.symmetricstate.cipherstate.protocol)
