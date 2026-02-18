@@ -130,10 +130,10 @@ initiate_connection_all_the_way :: proc(address: string, protocol_name := intern
     // <- e, ee, s, es
     internals.handshakestate_read_message(&handshake_state, stream)
 
+    fmt.println(handshake_state)
     // -> s, se
     res1, res2, status := internals.handshakestate_write_message(&handshake_state, stream)
 
-    fmt.println(handshake_state)
 
 
     #partial switch status {
@@ -223,11 +223,11 @@ accept_connection_all_the_way :: proc(
     C1, C2, status = internals.handshakestate_write_message(&handshakestate, stream)
     fmt.println("status at e, ee, s, es: %v", status)
 
+    fmt.println(handshakestate)
      // <- s, se
     C1, C2, status = internals.handshakestate_read_message(&handshakestate, stream)
     fmt.println("status at s, se: %v", status)
 
-    fmt.println(handshakestate)
 
     #partial switch status {
         case .Handshake_Complete:  {
