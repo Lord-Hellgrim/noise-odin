@@ -64,7 +64,7 @@ connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseStatus) {
     size_buffer : [8]u8
     net.recv_tcp(self.socket, size_buffer[:])
 
-    data_len := internals.u64_from_le_slice(size_buffer[:])
+    data_len := internals.u64_from_be_slice(size_buffer[:])
     if data_len >  internals.MAX_PACKET_SIZE {
         fmt.println("data_len: %v", data_len)
         return nil, .Io
