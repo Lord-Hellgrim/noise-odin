@@ -47,7 +47,7 @@ connection_send :: proc(self: ^Connection, message: []u8) -> NoiseStatus {
             ciphertext = internals.cipherstate_EncryptWithAd(&self.responder_cipherstate, nil, message)
         }
     }
-    ciphertext_len := internals.to_le_bytes(u64(len(ciphertext.main_body) + 16))
+    ciphertext_len := internals.to_le_bytes(u64(len(ciphertext.main_body) + 24))
     fmt.println("ciphertext_len: %v", ciphertext_len)
     internals.extend_from_slice(&buffer, ciphertext_len[:])
     internals.extend_from_slice(&buffer, ciphertext.main_body[:])
