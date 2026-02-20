@@ -716,6 +716,10 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, messa
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
 handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (CipherState, CipherState, NoiseStatus) {
+    if len(message) < 256 {
+        fmt.println(message)
+        panic("Message len is too small to read from")
+    }
     zeroslice: [DHLEN]u8
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1
