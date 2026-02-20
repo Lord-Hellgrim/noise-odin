@@ -196,6 +196,7 @@ NoiseStatus :: enum {
     Pending_Handshake,
     Handshake_Complete,
     invalid_address,
+    out_of_memory,
 }
 
 
@@ -609,24 +610,29 @@ handshakestate_Initialize :: proc(
 /// Appends EncryptAndHash(payload) to the buffer.
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
-handshakestate_write_message :: proc(self: ^HandshakeState, message_buffer: []u8) -> (CipherState, CipherState, NoiseStatus) {
+handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, message_buffer: [dynamic]u8) -> (CipherState, CipherState, NoiseStatus) {
     message_buffer := message_buffer
+    
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1;
-    message_tracker := SliceTracker{slice = message_buffer}
     for token in pattern {
         fmt.println(token)
         switch token {
             case .e: {
                 self.e = GENERATE_KEYPAIR(self.symmetricstate.cipherstate.protocol)
-                push_to_slice(&message_tracker, self.e.public_key[:])
+                elems_added, append_error := append(&message_buffer, ..self.e.public_key[:])
+                if append_error == .Out_Of_Memory {
+                    return {},{}, .out_of_memory
+                }
                 symmetricstate_MixHash(&self.symmetricstate, self.e.public_key[:])
             }
             case .s: {
                 temp := symmetricstate_EncryptAndHash(&self.symmetricstate, self.s.public_key[:])
-                push_to_slice(&message_tracker, temp.main_body)
-                push_to_slice(&message_tracker, temp.tag[:])
-                // net.send_tcp(message_buffer, temp.tag[:])
+                append(&message_buffer, ..temp.main_body)
+                elems_added, append_error := append(&message_buffer, ..temp.tag[:])
+                if append_error == .Out_Of_Memory {
+                    return {},{}, .out_of_memory
+                }
             }
             case .ee: {
                 dh := DH(self.e, self.re, self.symmetricstate.cipherstate.protocol)
@@ -659,6 +665,15 @@ handshakestate_write_message :: proc(self: ^HandshakeState, message_buffer: []u8
                 symmetricstate_MixKey(&self.symmetricstate, dh[:])
             }
         };
+    }
+
+    if len(payload) != 0 {
+        encrypted_payload := symmetricstate_EncryptAndHash(&self.symmetricstate, payload)
+        append(&message_buffer, ..encrypted_payload.main_body)
+        elems_added, append_error := append(&message_buffer, ..encrypted_payload.tag[:])
+        if append_error == .Out_Of_Memory {
+            return {},{}, .out_of_memory
+        }
     }
     
     if self.current_pattern == len(self.message_patterns) {
@@ -772,6 +787,14 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
             }
         };
     }
+
+    if message_cursor < len(message) {
+        rest_of_message := make([]u8, len(message) - message_cursor)
+        copy(rest_of_message, message[message_cursor:])
+        rest_buffer := cryptobuffer_from_slice(rest_of_message)
+        symmetricstate_DecryptAndHash(&self.symmetricstate, rest_buffer)
+    }
+
     if self.current_pattern == len(self.message_patterns) {
         sender, receiver := symmetricstate_Split(&self.symmetricstate)
         self.current_pattern = 0
