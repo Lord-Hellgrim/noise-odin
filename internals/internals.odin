@@ -247,7 +247,6 @@ CryptoBuffer :: struct {
 /// The entire ciphertext must be indistinguishable from random if the key is secret 
 /// (note that this is an additional requirement that isn't necessarily met by all AEAD schemes).
 ENCRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, plaintext: []u8, protocol: Protocol) -> (CryptoBuffer, NoiseStatus) {
-    fmt.println("Calling ENCRYPT")
     plaintext := plaintext
 
     k := k
@@ -363,7 +362,7 @@ Token :: enum {
 
 CipherState :: struct {
     protocol: Protocol,
-    k: [DHLEN]u8,
+    k: [32]u8,
     n: u64,
 }
 
@@ -396,7 +395,7 @@ cipherstate_InitializeKey :: proc(key: [DHLEN]u8, protocol: Protocol) -> CipherS
 
 /// Returns true if k is non-empty, false otherwise.
 cipherstate_HasKey :: proc(self: ^CipherState) -> bool {
-    zeroslice : [HASHLEN]u8
+    zeroslice : [DHLEN]u8
     if slice.equal(self.k[:], zeroslice[:]) {
         return false
     } else {
@@ -406,7 +405,6 @@ cipherstate_HasKey :: proc(self: ^CipherState) -> bool {
 
 ///If k is non-empty returns ENCRYPT(k, n++, ad, plaintext). Otherwise returns plaintext.
 cipherstate_EncryptWithAd :: proc(self: ^CipherState, ad: []u8, plaintext: []u8) -> CryptoBuffer {
-    fmt.println("calling cipherstate_EncryptWithAd")
     if cipherstate_HasKey(self) {
         temp, encrypt_error := ENCRYPT(self.k, self.n, ad, plaintext, self.protocol)
         self.n += 1;
@@ -619,19 +617,18 @@ handshakestate_Initialize :: proc(
 /// Appends EncryptAndHash(payload) to the buffer.
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
-handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, message_buffer: [dynamic]u8) -> (CipherState, CipherState, NoiseStatus) {
-    message_buffer := message_buffer
-    
+handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, allocator := context.allocator) -> ([]u8, CipherState, CipherState, NoiseStatus) {
+    message_buffer := make([dynamic]u8)
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1;
     for token in pattern {
-        fmt.println(token)
         switch token {
             case .e: {
                 self.e = GENERATE_KEYPAIR(self.symmetricstate.cipherstate.protocol)
                 elems_added, append_error := append(&message_buffer, ..self.e.public_key[:])
                 if append_error == .Out_Of_Memory {
-                    return {},{}, .out_of_memory
+                    fmt.println("OOM")
+                    return {}, {},{}, .out_of_memory
                 }
                 symmetricstate_MixHash(&self.symmetricstate, self.e.public_key[:])
             }
@@ -640,7 +637,7 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, messa
                 append(&message_buffer, ..temp.main_body)
                 elems_added, append_error := append(&message_buffer, ..temp.tag[:])
                 if append_error == .Out_Of_Memory {
-                    return {},{}, .out_of_memory
+                    return {}, {},{}, .out_of_memory
                 }
             }
             case .ee: {
@@ -681,16 +678,16 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, messa
         append(&message_buffer, ..encrypted_payload.main_body)
         elems_added, append_error := append(&message_buffer, ..encrypted_payload.tag[:])
         if append_error == .Out_Of_Memory {
-            return {},{}, .out_of_memory
+            return {}, {},{}, .out_of_memory
         }
     }
     
     if self.current_pattern == len(self.message_patterns) {
         sender, receiver := symmetricstate_Split(&self.symmetricstate)
         self.current_pattern = 0
-        return sender, receiver, .Ok
+        return message_buffer[:], sender, receiver, .Handshake_Complete
     } else {
-        return CipherState{}, CipherState{}, .Pending_Handshake
+        return message_buffer[:], {}, {}, .Pending_Handshake
     }
 }
 
@@ -716,8 +713,7 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, messa
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
 handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (CipherState, CipherState, NoiseStatus) {
-    if len(message) < 256 {
-        fmt.println(message)
+    if len(message) < 32 {
         panic("Message len is too small to read from")
     }
     zeroslice: [DHLEN]u8
@@ -746,9 +742,8 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
                     message_cursor += DHLEN + 16
                     rs_buffer := cryptobuffer_from_slice(rs[:])
                     temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
-                    new_rs := array32_from_slice(temp[:])
                     if self.rs == zeroslice {
-                        self.rs = new_rs
+                        copy(self.rs[:], temp)
                     } else {
                         fmt.println("Implementation error: rs was not empty when processing token 's'.\nre = %v", self.rs)
                         panic("Implementation error: rs was not empty when processing token 's'")
@@ -759,9 +754,8 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
                     message_cursor += DHLEN
                     rs_buffer := cryptobuffer_from_slice(rs[:])
                     temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
-                    new_rs := array32_from_slice(temp[:])
                     if self.rs == zeroslice {
-                        self.rs = new_rs
+                        copy(self.rs[:], temp)
                     } else {
                         fmt.println("Implementation error: rs was not empty when processing token 's'.\nre = %v", self.rs)
                         panic("Implementation error: rs was not empty when processing token 's'")

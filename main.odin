@@ -52,7 +52,7 @@ when ODIN_OS == .Linux {
         )
 
         responder_handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
-            true,
+            false,
             nil,
             internals.TESTING_KEYPAIR_RESPONDER,
             internals.keypair_empty(protocol),
@@ -61,23 +61,35 @@ when ODIN_OS == .Linux {
             protocol_name = internals.DEFAULT_PROTOCOL_NAME,
         )
 
-        message_buffer := make([dynamic]u8)
-        ic1, ic2, istatus := internals.handshakestate_write_message(&initiator_handshake_state, {}, message_buffer)
+        
+        message, ic1, ic2, istatus := internals.handshakestate_write_message(&initiator_handshake_state, {})
+        fmt.println(initiator_handshake_state.symmetricstate.cipherstate.k)
+        
+        rc1, rc2, rstatus := internals.handshakestate_read_message(&responder_handshake_state, message)
+        fmt.println(responder_handshake_state.symmetricstate.cipherstate.k)
+        
+        message, rc1, rc2, rstatus = internals.handshakestate_write_message(&responder_handshake_state, {})
+        fmt.println(responder_handshake_state.symmetricstate.cipherstate.k)
 
-        rc1, rc2, rstatus := internals.handshakestate_read_message(&responder_handshake_state, message_buffer[:])
-        clear(&message_buffer)
-        rc1, rc2, rstatus = internals.handshakestate_write_message(&responder_handshake_state, {}, message_buffer)
+        ic1, ic2, istatus = internals.handshakestate_read_message(&initiator_handshake_state, message)
+        fmt.println(initiator_handshake_state.symmetricstate.cipherstate.k)
+        
+        message, ic1, ic2, istatus = internals.handshakestate_write_message(&initiator_handshake_state, {})
+        fmt.println(initiator_handshake_state.symmetricstate.cipherstate.k)
+        
+        rc1, rc2, rstatus = internals.handshakestate_read_message(&responder_handshake_state, message)
+        fmt.println(responder_handshake_state.symmetricstate.cipherstate.k)
+        
+        fmt.println(istatus)
+        fmt.println(rstatus)
 
-        ic1, ic2, istatus = internals.handshakestate_read_message(&initiator_handshake_state, message_buffer[:])
-        clear(&message_buffer)
-        ic1, ic2, istatus = internals.handshakestate_write_message(&initiator_handshake_state, {}, message_buffer)
         assert(istatus == .Handshake_Complete)
-
-        rc1, rc2, rstatus = internals.handshakestate_read_message(&responder_handshake_state, message_buffer[:])
         assert(rstatus == .Handshake_Complete)
 
-
-
+        fmt.println(rc1.k)
+        fmt.println(rc2.k)
+        fmt.println(ic1.k)
+        fmt.println(ic2.k)
 
 
     }
