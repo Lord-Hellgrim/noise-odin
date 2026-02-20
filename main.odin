@@ -5,7 +5,9 @@ import "core:net"
 import "core:strings"
 import "core:slice"
 import "core:time"
+import "core:os"
 
+import "internals"
 
 multi_return :: proc(a: int, b: int, c := 1, d := 2) -> int {
     return a+b+c+d
@@ -31,13 +33,52 @@ when ODIN_OS == .Linux {
     }
 } else when ODIN_OS == .Windows {
     main :: proc() {
-        message := "This is a message that is longer than 128 bytes. Definately longer than 128 bytes by now. I probably don't have to keep typing"
-        message_bytes := slice.clone(transmute([]u8)message)
-        connection, connection_error := initiate_connection_all_the_way("127.0.0.1:3001")
-        fmt.println(connection_error)
-        fmt.println(connection)
-        send_status := connection_send(&connection, message_bytes)
-        fmt.println(send_status)
-        time.sleep(time.Second)
+        test_message := make([]u8, 256)
+        test_string, read_error := os.read_entire_file("Noise_protocol_text.txt", context.allocator)
+        if read_error != os.General_Error.None {
+            fmt.println(read_error)
+            return
+        }
+        protocol := DEFAULT_PROTOCOL
+        zeroslice : [internals.DHLEN]u8
+        initiator_handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
+            true,
+            nil,
+            internals.TESTING_KEYPAIR_INITIATOR,
+            internals.keypair_empty(protocol),
+            zeroslice,
+            zeroslice,
+            protocol_name = internals.DEFAULT_PROTOCOL_NAME,
+        )
+
+        responder_handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
+            true,
+            nil,
+            internals.TESTING_KEYPAIR_RESPONDER,
+            internals.keypair_empty(protocol),
+            zeroslice,
+            zeroslice,
+            protocol_name = internals.DEFAULT_PROTOCOL_NAME,
+        )
+
+        message_buffer := make([dynamic]u8)
+        ic1, ic2, istatus := internals.handshakestate_write_message(&initiator_handshake_state, {}, message_buffer)
+
+        rc1, rc2, rstatus := internals.handshakestate_read_message(&responder_handshake_state, message_buffer[:])
+        clear(&message_buffer)
+        rc1, rc2, rstatus = internals.handshakestate_write_message(&responder_handshake_state, {}, message_buffer)
+
+        ic1, ic2, istatus = internals.handshakestate_read_message(&initiator_handshake_state, message_buffer[:])
+        clear(&message_buffer)
+        ic1, ic2, istatus = internals.handshakestate_write_message(&initiator_handshake_state, {}, message_buffer)
+        assert(istatus == .Handshake_Complete)
+
+        rc1, rc2, rstatus = internals.handshakestate_read_message(&responder_handshake_state, message_buffer[:])
+        assert(rstatus == .Handshake_Complete)
+
+
+
+
+
     }
 }

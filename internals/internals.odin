@@ -172,7 +172,16 @@ keypair_empty :: proc(protocol: Protocol) -> KeyPair {
         public_key = public, 
         private_key = private,
     }
-    
+}
+
+TESTING_KEYPAIR_INITIATOR :: KeyPair {
+    public_key = {0..<DHLEN = 1},
+    private_key = {0..<DHLEN = 2},
+}
+
+TESTING_KEYPAIR_RESPONDER :: KeyPair {
+    public_key = {0..<DHLEN = 3},
+    private_key = {0..<DHLEN = 4},
 }
 
 keypair_random :: proc(protocol: Protocol) -> KeyPair {

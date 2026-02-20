@@ -102,55 +102,55 @@ connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseStatus) {
 }
 
 
-initiate_connection_all_the_way :: proc(address: string, protocol_name := internals.DEFAULT_PROTOCOL_NAME) -> (Connection, NoiseStatus) {
-    protocol, parse_error := internals.parse_protocol_string(protocol_name)
-    if parse_error == .Protocol_could_not_be_parsed {
-        return connection_nullcon(), .Protocol_could_not_be_parsed
-    }
-    zeroslice : [internals.DHLEN]u8
-    peer, parsing_status := net.parse_endpoint(address)
-    if parsing_status == false {
-        return connection_nullcon(), .invalid_address
-    }
-    stream, _ := net.dial_tcp(peer)
-    s := internals.keypair_random(protocol)
-    handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
-        true,
-        nil,
-        s,
-        internals.keypair_empty(protocol),
-        zeroslice,
-        zeroslice,
-        protocol_name = protocol_name
-    )
+// initiate_connection_all_the_way :: proc(address: string, protocol_name := internals.DEFAULT_PROTOCOL_NAME) -> (Connection, NoiseStatus) {
+//     protocol, parse_error := internals.parse_protocol_string(protocol_name)
+//     if parse_error == .Protocol_could_not_be_parsed {
+//         return connection_nullcon(), .Protocol_could_not_be_parsed
+//     }
+//     zeroslice : [internals.DHLEN]u8
+//     peer, parsing_status := net.parse_endpoint(address)
+//     if parsing_status == false {
+//         return connection_nullcon(), .invalid_address
+//     }
+//     stream, _ := net.dial_tcp(peer)
+//     s := internals.keypair_random(protocol)
+//     handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
+//         true,
+//         nil,
+//         s,
+//         internals.keypair_empty(protocol),
+//         zeroslice,
+//         zeroslice,
+//         protocol_name = protocol_name
+//     )
     
-    // -> e
-    internals.handshakestate_write_message(&handshake_state, stream)
+//     // -> e
+//     internals.handshakestate_write_message(&handshake_state, stream)
 
-    // <- e, ee, s, es
-    internals.handshakestate_read_message(&handshake_state, stream)
+//     // <- e, ee, s, es
+//     internals.handshakestate_read_message(&handshake_state, stream)
 
-    // -> s, se
-    res1, res2, status := internals.handshakestate_write_message(&handshake_state, stream)
+//     // -> s, se
+//     res1, res2, status := internals.handshakestate_write_message(&handshake_state, stream)
 
 
 
-    #partial switch status {
-        case .Ok: {
-            return Connection {
-                    initiator_cipherstate = res1,
-                    responder_cipherstate = res2,
-                    socket = stream,
-                    peer = peer,
-                }, 
-                status
-            }
-        case: {
-            return connection_nullcon(), status
-        }
-    }
+//     #partial switch status {
+//         case .Ok: {
+//             return Connection {
+//                     initiator_cipherstate = res1,
+//                     responder_cipherstate = res2,
+//                     socket = stream,
+//                     peer = peer,
+//                 }, 
+//                 status
+//             }
+//         case: {
+//             return connection_nullcon(), status
+//         }
+//     }
 
-}
+// }
 
 
 ConnectionStatus :: enum {
@@ -161,38 +161,38 @@ ConnectionStatus :: enum {
 }
 
 
-step_connection :: proc(potential_connection: ^Connection, handshake_state: ^HandshakeState) -> ConnectionStatus{
+// step_connection :: proc(potential_connection: ^Connection, handshake_state: ^HandshakeState) -> ConnectionStatus{
 
-    initiator_cipherstate, responder_cipherstate : internals.CipherState
-    status : NoiseStatus = nil
-    if handshake_state.initiator {
-        if handshake_state.current_pattern % 2 == 0 {
-            initiator_cipherstate, responder_cipherstate, status = internals.handshakestate_write_message(handshake_state, potential_connection.socket)
-        } else {
-            initiator_cipherstate, responder_cipherstate, status = internals.handshakestate_read_message(handshake_state, potential_connection.socket)
-        }
-    } else {
-        if handshake_state.current_pattern % 2 == 0 {
-            initiator_cipherstate, responder_cipherstate, status = internals.handshakestate_read_message(handshake_state, potential_connection.socket)
-        } else {
-            initiator_cipherstate, responder_cipherstate, status = internals.handshakestate_write_message(handshake_state, potential_connection.socket)
-        }
-    }
+//     initiator_cipherstate, responder_cipherstate : internals.CipherState
+//     status : NoiseStatus = nil
+//     if handshake_state.initiator {
+//         if handshake_state.current_pattern % 2 == 0 {
+//             initiator_cipherstate, responder_cipherstate, status = internals.handshakestate_write_message(handshake_state, potential_connection.socket)
+//         } else {
+//             initiator_cipherstate, responder_cipherstate, status = internals.handshakestate_read_message(handshake_state, potential_connection.socket)
+//         }
+//     } else {
+//         if handshake_state.current_pattern % 2 == 0 {
+//             initiator_cipherstate, responder_cipherstate, status = internals.handshakestate_read_message(handshake_state, potential_connection.socket)
+//         } else {
+//             initiator_cipherstate, responder_cipherstate, status = internals.handshakestate_write_message(handshake_state, potential_connection.socket)
+//         }
+//     }
 
-    #partial switch status {
-        case .Handshake_Complete: {
-            potential_connection.initiator_cipherstate = initiator_cipherstate
-            potential_connection.responder_cipherstate = responder_cipherstate
-            return .complete
-        }
-        case .Io:
-            return .io_error
-        case .Pending_Handshake:
-            return .pending
-        case:
-            return .error
-    }
-}
+//     #partial switch status {
+//         case .Handshake_Complete: {
+//             potential_connection.initiator_cipherstate = initiator_cipherstate
+//             potential_connection.responder_cipherstate = responder_cipherstate
+//             return .complete
+//         }
+//         case .Io:
+//             return .io_error
+//         case .Pending_Handshake:
+//             return .pending
+//         case:
+//             return .error
+//     }
+// }
 
 
 KeyPair :: internals.KeyPair
@@ -201,45 +201,45 @@ KeyPair :: internals.KeyPair
 HandshakeState :: internals.HandshakeState
 
 
-accept_connection_all_the_way :: proc(
-    stream: net.TCP_Socket,
-    peer: net.Endpoint,
-    s: KeyPair,
-    protocol_name := internals.DEFAULT_PROTOCOL_NAME
-) -> (Connection, NoiseStatus) {
-    zeroslice : [internals.DHLEN]u8
-    protocol, protocol_parse_error := internals.parse_protocol_string(protocol_name)
-    if protocol_parse_error == .Protocol_could_not_be_parsed {
-        return connection_nullcon(), .Protocol_could_not_be_parsed
-    }
-    handshakestate, proto := internals.handshakestate_Initialize(false, nil, s, internals.keypair_empty(protocol), zeroslice, zeroslice);
+// accept_connection_all_the_way :: proc(
+//     stream: net.TCP_Socket,
+//     peer: net.Endpoint,
+//     s: KeyPair,
+//     protocol_name := internals.DEFAULT_PROTOCOL_NAME
+// ) -> (Connection, NoiseStatus) {
+//     zeroslice : [internals.DHLEN]u8
+//     protocol, protocol_parse_error := internals.parse_protocol_string(protocol_name)
+//     if protocol_parse_error == .Protocol_could_not_be_parsed {
+//         return connection_nullcon(), .Protocol_could_not_be_parsed
+//     }
+//     handshakestate, proto := internals.handshakestate_Initialize(false, nil, s, internals.keypair_empty(protocol), zeroslice, zeroslice);
 
-    // <- e
-    C1, C2, status := internals.handshakestate_read_message(&handshakestate, stream)
+//     // <- e
+//     C1, C2, status := internals.handshakestate_read_message(&handshakestate, stream)
 
-    // -> e, ee, s, es
-    C1, C2, status = internals.handshakestate_write_message(&handshakestate, stream)
+//     // -> e, ee, s, es
+//     C1, C2, status = internals.handshakestate_write_message(&handshakestate, stream)
 
-     // <- s, se
-    C1, C2, status = internals.handshakestate_read_message(&handshakestate, stream)
+//      // <- s, se
+//     C1, C2, status = internals.handshakestate_read_message(&handshakestate, stream)
 
 
-    #partial switch status {
-        case .Handshake_Complete:  {
-            fmt.println("returning Connection!!")
-            return Connection {
-                initiator_cipherstate = C1,
-                responder_cipherstate = C2,
-                socket = stream,
-                peer = peer,
-            }, .Ok
-        }
-        case: {
-            fmt.println(status)
-            return connection_nullcon(), .Io
-        }
-    }
-}
+//     #partial switch status {
+//         case .Handshake_Complete:  {
+//             fmt.println("returning Connection!!")
+//             return Connection {
+//                 initiator_cipherstate = C1,
+//                 responder_cipherstate = C2,
+//                 socket = stream,
+//                 peer = peer,
+//             }, .Ok
+//         }
+//         case: {
+//             fmt.println(status)
+//             return connection_nullcon(), .Io
+//         }
+//     }
+// }
 
 
 connection_nullcon :: proc() -> Connection {
