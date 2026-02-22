@@ -20,18 +20,17 @@ import "core:net"
 /// A constant specifying the size in bytes of public keys and DH outputs. For security reasons, DHLEN must be 32 or greater.
 DHLEN : int :  32;
 /// A constant specifying the size in bytes of the hash output. Must be 32 or 64.
-HASHLEN: int : 64;
+HASHLEN: int : 32;
 
 /// A constant specifying the size in bytes that the hash function uses internally to divide its input for iterative processing. 
 /// This is needed to use the hash function with HMAC (BLOCKLEN is B in [3]).
 BLOCKLEN: int : 128;
 /// The HMAC padding strings
-IPAD: [BLOCKLEN]u8 : 0x36
-OPAD: [BLOCKLEN]u8 : 0x5c
+IPAD: [BLOCKLEN]u8 : {0..<BLOCKLEN = 0x36}
+OPAD: [BLOCKLEN]u8 : {0..<BLOCKLEN = 0x5c}
 
 MAX_PACKET_SIZE: u64 : 65535;
 
-DEFAULT_PROTOCOL_NAME :: "Noise_XX_25519_AESGCM_SHA512";
 
 
 DhType :: enum {
@@ -83,19 +82,21 @@ HandshakePattern :: enum {
     NK
 }
 
+DEFAULT_PROTOCOL_NAME :: "Noise_XX_25519_AESGCM_SHA512";
+
 @(rodata)
 PATTERN_XX : [][]Token = {
-                {.e},
-                {.e, .ee, .s, .es},
-                {.s, .se}
-            }
+    {.e},
+    {.e, .ee, .s, .es},
+    {.s, .se}
+}
 
 @(rodata)
 PATTERN_NK : [][]Token = {
-                {.s},
-                {.e, .es},
-                {.e, .ee}
-            }
+    {.s},
+    {.e, .es},
+    {.e, .ee}
+}
 
 
 Protocol :: struct {
@@ -109,7 +110,7 @@ DEFAULT_PROTOCOL :: Protocol {
     handshake_pattern = .XX,
     dh = .x25519,
     cipher = .AES256gcm,
-    hash = .SHA512
+    hash = .SHA256
 }
 
 ERROR_PROTOCOL :: Protocol {
@@ -174,16 +175,6 @@ keypair_empty :: proc(protocol: Protocol) -> KeyPair {
     }
 }
 
-TESTING_KEYPAIR_INITIATOR :: KeyPair {
-    public_key = {0..<DHLEN = 1},
-    private_key = {0..<DHLEN = 2},
-}
-
-TESTING_KEYPAIR_RESPONDER :: KeyPair {
-    public_key = {0..<DHLEN = 3},
-    private_key = {0..<DHLEN = 4},
-}
-
 keypair_random :: proc(protocol: Protocol) -> KeyPair {
     private_key: [DHLEN]u8;
     crypto.rand_bytes(private_key[:])
@@ -216,6 +207,30 @@ GENERATE_KEYPAIR :: proc(protocol: Protocol) -> KeyPair {
     return keypair_random(protocol)
 }
 
+TEST_INI_KEYPAIR :: proc(protocol: Protocol) -> KeyPair {
+    private_key := [DHLEN]u8{0..<32 = 1}
+
+    public_key : [DHLEN]u8;
+    x25519.scalarmult_basepoint(public_key[:], private_key[:])
+
+    return KeyPair {
+        private_key = private_key,
+        public_key = public_key,
+    }
+}
+
+TEST_RES_KEYPAIR :: proc(protocol: Protocol) -> KeyPair {
+    private_key := [DHLEN]u8{0..<32 = 2}
+
+    public_key : [DHLEN]u8;
+    x25519.scalarmult_basepoint(public_key[:], private_key[:])
+
+    return KeyPair {
+        private_key = private_key,
+        public_key = public_key,
+    }
+}
+
 
 /// Performs a Diffie-Hellman calculation between the private key in key_pair and the public_key 
 /// and returns an output sequence of bytes of length DHLEN. 
@@ -230,11 +245,44 @@ DH :: proc(key_pair: KeyPair, public_key: [DHLEN]u8, protocol: Protocol) -> [DHL
     key_pair := key_pair
     public_key := public_key
     assert(key_pair.private_key != 0 && key_pair.public_key != 0)
-    x25519.scalarmult_basepoint(public_key[:], key_pair.private_key[:])
+    // x25519.scalarmult_basepoint(public_key[:], key_pair.private_key[:])
     shared_secret : [DHLEN]u8
     x25519.scalarmult(shared_secret[:], key_pair.private_key[:], public_key[:])
     return shared_secret
 } 
+
+alt_KeyPair :: struct {
+    public: ecdh.Public_Key,
+    private: ecdh.Private_Key,
+}
+
+alt_KeyPair_random :: proc(protocol: Protocol) -> alt_KeyPair {
+    curve : ecdh.Curve
+    switch protocol.dh {
+        case .x25519:   curve = .X25519
+        case .x448:     curve = .X448
+    }
+    private : ecdh.Private_Key
+    public : ecdh.Public_Key
+    ecdh.private_key_generate(&private, curve)
+    ecdh.public_key_set_priv(&public, &private)
+    return alt_KeyPair{
+        public = public,
+        private = private,
+    }
+}
+
+
+alt_DH :: proc(key_pair: ^alt_KeyPair, their_public_key: ^ecdh.Public_Key) -> [DHLEN]u8 {
+    dst : [DHLEN]u8
+    success := ecdh.ecdh(&key_pair.private, their_public_key, dst[:])
+
+    if !success {
+        panic("BLEH!")
+    }
+
+    return dst
+}
 
 CryptoBuffer :: struct {
     main_body: []u8,
@@ -288,8 +336,8 @@ DECRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, ciphertext: CryptoBuffer, protoc
 
 /// Hashes some arbitrary-length data with a collision-resistant cryptographic hash function and returns an output of HASHLEN bytes.
 HASH :: proc(protocol: Protocol, data: ..[]u8) -> [HASHLEN]u8 {
-    ctx : sha2.Context_512
-    sha2.init_512(&ctx)
+    ctx : sha2.Context_256
+    sha2.init_256(&ctx)
 
     for datum in data {
         sha2.update(&ctx, datum)
@@ -335,10 +383,12 @@ HMAC_HASH :: proc(K: [HASHLEN]u8, text: []u8, protocol: Protocol) -> [HASHLEN]u8
 ///  - Returns the triple (output1, output2, output3).
 ///  - Note that temp_key, output1, output2, and output3 are all HASHLEN bytes in length. Also note that the HKDF() function is simply HKDF from [4] with the chaining_key as HKDF salt, and zero-length HKDF info.
 HKDF :: proc(chaining_key: [HASHLEN]u8, input_key_material: []u8, protocol: Protocol) -> ([HASHLEN]u8, [HASHLEN]u8, [HASHLEN]u8) {
+    // fmt.println("Chaining:key: ", chaining_key)
+    // fmt.println("input_key:material: ", input_key_material)
     assert(len(input_key_material) == 0 || len(input_key_material) == 32)
     temp_key := HMAC_HASH(chaining_key, input_key_material, protocol)
     output1 :=  HMAC_HASH(temp_key, {0x01}, protocol)
-
+    // fmt.println("output1: ", output1)
     temp_bytes_2 := concat_bytes(output1[:], {0x02})
     defer delete(temp_bytes_2)
     output2 :=  HMAC_HASH(temp_key, temp_bytes_2 , protocol)
@@ -405,8 +455,13 @@ cipherstate_HasKey :: proc(self: ^CipherState) -> bool {
 
 ///If k is non-empty returns ENCRYPT(k, n++, ad, plaintext). Otherwise returns plaintext.
 cipherstate_EncryptWithAd :: proc(self: ^CipherState, ad: []u8, plaintext: []u8) -> CryptoBuffer {
+    fmt.println("Encrypt ad -> h: ", ad)
     if cipherstate_HasKey(self) {
         temp, encrypt_error := ENCRYPT(self.k, self.n, ad, plaintext, self.protocol)
+        if encrypt_error != .Ok {
+            fmt.println("Encrypt error: ", encrypt_error)
+            panic("")
+        }
         self.n += 1;
         return temp
     } else {
@@ -417,6 +472,7 @@ cipherstate_EncryptWithAd :: proc(self: ^CipherState, ad: []u8, plaintext: []u8)
 /// If k is non-empty returns DECRYPT(k, n++, ad, ciphertext). Otherwise returns ciphertext. 
 /// If an authentication failure occurs in DECRYPT() then n is not incremented and an error is signaled to the caller.
 cipherstate_DecryptWithAd :: proc(self: ^CipherState, ad: []u8, ciphertext: CryptoBuffer) -> ([]u8, NoiseStatus) {
+    fmt.println("Decrypt ad -> h: ", ad)
     if cipherstate_HasKey(self) {
         plaintext, decrypt_error := DECRYPT(self.k, self.n, ad, ciphertext, self.protocol)
         self.n += 1;
@@ -484,6 +540,9 @@ symmetricstate_MixKey :: proc(self: ^SymmetricState, input_key_material: []u8) {
     ck, temp_k, _ := HKDF(self.ck, input_key_material[:], self.cipherstate.protocol)
     self.ck = ck
     self.cipherstate = cipherstate_InitializeKey(array32_from_slice(temp_k[:]), self.cipherstate.protocol)
+    // fmt.println("Symmetric state ck: ", self.ck)
+    // fmt.println("Symmetric state h: ", self.h)
+    // fmt.println("cipherstate.k: ", self.cipherstate.k)
 }
 
 /// This function is used for handling pre-shared symmetric keys, as described in Section 9. It executes the following steps:
@@ -518,8 +577,16 @@ symmetricstate_EncryptAndHash :: proc(self:  ^SymmetricState, plaintext: []u8) -
 /// Note that if k is empty, the DecryptWithAd() call will set plaintext equal to ciphertext.
 symmetricstate_DecryptAndHash :: proc(self:  ^SymmetricState, ciphertext: CryptoBuffer) -> ([]u8, NoiseStatus) {
     ciphertext := ciphertext
+    hash_text := CryptoBuffer {
+        main_body = slice.clone(ciphertext.main_body),
+        tag = ciphertext.tag,
+    }
     result, decrypt_error := cipherstate_DecryptWithAd(&self.cipherstate, self.h[:], ciphertext)
-    symmetricstate_MixHash(self, ciphertext.main_body, ciphertext.tag[:])
+    if decrypt_error != .Ok {
+        fmt.println("decryption error: ", decrypt_error)
+        panic("")
+    }
+    symmetricstate_MixHash(self, hash_text.main_body, hash_text.tag[:])
     return result, .Ok
 }
 
@@ -622,9 +689,15 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1;
     for token in pattern {
+        // fmt.println(token)
+
         switch token {
             case .e: {
-                self.e = GENERATE_KEYPAIR(self.symmetricstate.cipherstate.protocol)
+                if self.initiator {
+                    self.e = TEST_INI_KEYPAIR(self.symmetricstate.cipherstate.protocol)
+                } else {
+                    self.e = TEST_RES_KEYPAIR(self.symmetricstate.cipherstate.protocol)
+                }
                 elems_added, append_error := append(&message_buffer, ..self.e.public_key[:])
                 if append_error == .Out_Of_Memory {
                     fmt.println("OOM")
@@ -639,8 +712,12 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
                 if append_error == .Out_Of_Memory {
                     return {}, {},{}, .out_of_memory
                 }
+                fmt.println("s: ", self.s)
+                fmt.println("rs: ", self.rs)
             }
             case .ee: {
+                // fmt.println("e: ", self.e)
+                // fmt.println("re: ", self.re)
                 dh := DH(self.e, self.re, self.symmetricstate.cipherstate.protocol)
                 symmetricstate_MixKey(&self.symmetricstate, dh[:])
             }
@@ -721,14 +798,14 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
     self.current_pattern += 1
     message_cursor := 0
     for token in pattern {
-        
+        // fmt.println(token)
         switch token {
             case .e: {
-                e : [DHLEN]u8
-                copy(e[:], message[message_cursor : message_cursor + DHLEN])
+                re : [DHLEN]u8
+                copy(re[:], message[message_cursor : message_cursor + DHLEN])
                 message_cursor += DHLEN
                 if self.re == zeroslice {
-                    self.re = e
+                    self.re = re
                     symmetricstate_MixHash(&self.symmetricstate, self.re[:])
                 } else {
                     fmt.println("Implementation error: re was not empty when processing token 'e'.\nre = %v", self.re)
@@ -742,12 +819,14 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
                     message_cursor += DHLEN + 16
                     rs_buffer := cryptobuffer_from_slice(rs[:])
                     temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
-                    if self.rs == zeroslice {
-                        copy(self.rs[:], temp)
+                    if slice.equal(self.rs[:], zeroslice[:]) {
+                        self.rs = array32_from_slice(temp)
                     } else {
                         fmt.println("Implementation error: rs was not empty when processing token 's'.\nre = %v", self.rs)
                         panic("Implementation error: rs was not empty when processing token 's'")
                     }
+                    fmt.println("s: ", self.s)
+                    fmt.println("rs: ", self.rs)
                 } else {
                     rs : [DHLEN]u8
                     copy(rs[:], message[message_cursor : message_cursor + DHLEN])
@@ -764,6 +843,8 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
             }
             
             case .ee: {
+                // fmt.println("e: ", self.e)
+                // fmt.println("re: ", self.re)
                 dh := DH(self.e, self.re, self.symmetricstate.cipherstate.protocol)
                 symmetricstate_MixKey(&self.symmetricstate, dh[:])
             }
@@ -841,7 +922,7 @@ u64_from_be_slice :: proc(slice: []u8) -> u64 {
 }
 
 cryptobuffer_from_slice :: proc(slice: []u8) -> CryptoBuffer {
-    fmt.println("Len of slice: %v", len(slice))
+    // fmt.println("Len of slice: %v", len(slice))
     assert(len(slice) > 16)
     length := len(slice)-16
     return CryptoBuffer{
