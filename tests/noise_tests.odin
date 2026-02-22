@@ -5,6 +5,7 @@ import "core:testing"
 import "core:os"
 import "core:slice"
 import "core:crypto"
+import "core:crypto/ecdh"
 import "core:crypto/x25519"
 import "core:fmt"
 import "core:log"
@@ -59,7 +60,7 @@ testing_concat_bytes :: proc(t: ^testing.T) {
 @(test)
 testing_matching_cipherstates :: proc(t: ^testing.T) {
     protocol := internals.DEFAULT_PROTOCOL
-    zeroslice : [internals.DHLEN]u8
+    zeroslice : ecdh.Public_Key
     initiator_handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
         true,
         nil,

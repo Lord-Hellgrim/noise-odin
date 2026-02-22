@@ -6,6 +6,7 @@ import "core:strings"
 import "core:slice"
 import "core:time"
 import "core:os"
+import "core:crypto/ecdh"
 
 import "internals"
 
@@ -18,7 +19,7 @@ main :: proc() {
         return
     }
     protocol := internals.DEFAULT_PROTOCOL
-    zeroslice : [internals.DHLEN]u8
+    zeroslice : ecdh.Public_Key
     initiator_handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
         true,
         nil,

@@ -58,10 +58,10 @@ HashType :: enum {
     SHA512,
 }
 
-DhLen :: proc(dh: DhType) -> int {
-    switch dh {
-        case .x25519: return 32
-        case .x448: return 56
+DhLen :: proc(dh: ecdh.Curve) -> int {
+    #partial switch dh {
+        case .X25519: return 32
+        case .X448: return 56
     }
     return 0
 }
@@ -112,14 +112,14 @@ PATTERN_NK : [][]Token = {
 
 Protocol :: struct {
     handshake_pattern: HandshakePattern,
-    dh: DhType,
+    dh: ecdh.Curve,
     cipher: CipherType,
     hash: HashType,
 }
 
 DEFAULT_PROTOCOL :: Protocol {
     handshake_pattern = .XX,
-    dh = .x25519,
+    dh = .X25519,
     cipher = .AES256gcm,
     hash = .SHA256
 }
@@ -152,7 +152,7 @@ parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus
     }
 
     switch split[2] {
-        case "25519": protocol.dh = .x25519
+        case "25519": protocol.dh = .X25519
         case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
@@ -172,32 +172,32 @@ parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus
 
 
 
-KeyPair :: struct {
-    public_key: [DHLEN]u8,
-    private_key: [DHLEN]u8,
-}
+// KeyPair :: struct {
+//     public_key: [DHLEN]u8,
+//     private_key: [DHLEN]u8,
+// }
 
-keypair_empty :: proc(protocol: Protocol) -> KeyPair {
-    public : [DHLEN]u8
-    private: [DHLEN]u8
-    return KeyPair {
-        public_key = public, 
-        private_key = private,
-    }
-}
+// keypair_empty :: proc(protocol: Protocol) -> KeyPair {
+//     public : [DHLEN]u8
+//     private: [DHLEN]u8
+//     return KeyPair {
+//         public_key = public, 
+//         private_key = private,
+//     }
+// }
 
-keypair_random :: proc(protocol: Protocol) -> KeyPair {
-    private_key: [DHLEN]u8;
-    crypto.rand_bytes(private_key[:])
+// keypair_random :: proc(protocol: Protocol) -> KeyPair {
+//     private_key: [DHLEN]u8;
+//     crypto.rand_bytes(private_key[:])
 
-    public_key : [DHLEN]u8;
-    x25519.scalarmult_basepoint(public_key[:], private_key[:])
+//     public_key : [DHLEN]u8;
+//     x25519.scalarmult_basepoint(public_key[:], private_key[:])
 
-    return KeyPair {
-        private_key = private_key,
-        public_key = public_key,
-    }
-}
+//     return KeyPair {
+//         private_key = private_key,
+//         public_key = public_key,
+//     }
+// }
 
 
 
@@ -243,47 +243,75 @@ GENERATE_KEYPAIR :: proc(protocol: Protocol) -> KeyPair {
 /// Implementations must handle invalid public keys either by returning some output which is purely a function of the public key 
 /// and does not depend on the private key, or by signaling an error to the caller. 
 /// The DH function may define more specific rules for handling invalid values.
-DH :: proc(key_pair: KeyPair, public_key: [DHLEN]u8, protocol: Protocol) -> [DHLEN]u8 {
-    key_pair := key_pair
-    public_key := public_key
-    assert(key_pair.private_key != 0 && key_pair.public_key != 0)
-    // x25519.scalarmult_basepoint(public_key[:], key_pair.private_key[:])
-    shared_secret : [DHLEN]u8
-    x25519.scalarmult(shared_secret[:], key_pair.private_key[:], public_key[:])
-    return shared_secret
-} 
-
-alt_KeyPair :: struct {
-    public: ecdh.Public_Key,
-    private: ecdh.Private_Key,
-}
-
-alt_KeyPair_random :: proc(protocol: Protocol) -> alt_KeyPair {
-    curve : ecdh.Curve
-    switch protocol.dh {
-        case .x25519:   curve = .X25519
-        case .x448:     curve = .X448
-    }
-    private : ecdh.Private_Key
-    public : ecdh.Public_Key
-    ecdh.private_key_generate(&private, curve)
-    ecdh.public_key_set_priv(&public, &private)
-    return alt_KeyPair{
-        public = public,
-        private = private,
-    }
-}
-
-
-alt_DH :: proc(key_pair: ^alt_KeyPair, their_public_key: ^ecdh.Public_Key) -> [MAX_DHLEN]u8 {
+DH :: proc(key_pair: ^KeyPair, their_public_key: ^ecdh.Public_Key) -> [MAX_DHLEN]u8 {
     dst : [MAX_DHLEN]u8
-    success := ecdh.ecdh(&key_pair.private, their_public_key, dst[:])
+    success := ecdh.ecdh(&key_pair.private, their_public_key, dst[:DhLen(their_public_key._curve)])
 
     if !success {
         panic("BLEH!")
     }
 
     return dst
+}
+// DH :: proc(key_pair: KeyPair, public_key: [DHLEN]u8, protocol: Protocol) -> [DHLEN]u8 {
+//     key_pair := key_pair
+//     public_key := public_key
+//     assert(key_pair.private_key != 0 && key_pair.public_key != 0)
+//     // x25519.scalarmult_basepoint(public_key[:], key_pair.private_key[:])
+//     shared_secret : [DHLEN]u8
+//     x25519.scalarmult(shared_secret[:], key_pair.private_key[:], public_key[:])
+//     return shared_secret
+// } 
+
+KeyPair :: struct {
+    public: ecdh.Public_Key,
+    private: ecdh.Private_Key,
+}
+
+keypair_random :: proc(protocol: Protocol) -> KeyPair {
+    curve : ecdh.Curve
+    #partial switch protocol.dh {
+        case .X25519:   curve = .X25519
+        case .X448:     curve = .X448
+        case: panic("unsupported DH curve")
+    }
+    private : ecdh.Private_Key
+    public : ecdh.Public_Key
+    ecdh.private_key_generate(&private, curve)
+    ecdh.public_key_set_priv(&public, &private)
+    return KeyPair{
+        public = public,
+        private = private,
+    }
+}
+
+keypair_empty :: proc(protocol: Protocol) -> KeyPair {
+    private : ecdh.Private_Key
+    public : ecdh.Public_Key
+    return KeyPair{public = public, private = private}
+}
+
+zero_key :: proc() -> ecdh.Public_Key {
+    k : ecdh.Public_Key
+    return k
+}
+
+public_key_is_zero :: proc(public_key: ^ecdh.Public_Key) -> bool {
+    if public_key._curve == .Invalid {
+        return true
+    } else {
+        return false
+    }
+}
+
+private_key_is_zero :: proc(private_key: ^ecdh.Private_Key) -> bool {
+    dst : ecdh.Private_Key
+
+    if ecdh.private_key_equal(&dst, private_key) {
+        return true
+    } else {
+        return false
+    }
 }
 
 CryptoBuffer :: struct {
@@ -425,11 +453,15 @@ HandshakeState :: struct {
     symmetricstate: SymmetricState,
     s: KeyPair,
     e: KeyPair, 
-    rs: [DHLEN]u8,
-    re: [DHLEN]u8,
+    rs: ecdh.Public_Key,
+    re: ecdh.Public_Key,
     initiator: bool,
     message_patterns: [][]Token,
     current_pattern: int,
+}
+
+get_curve :: proc(handshake_state: ^HandshakeState) -> ecdh.Curve {
+    return handshake_state.symmetricstate.cipherstate.protocol.dh
 }
 
 
@@ -627,8 +659,8 @@ handshakestate_Initialize :: proc(
     prologue: []u8,
     s: KeyPair,
     e: KeyPair,
-    rs: [DHLEN]u8,
-    re: [DHLEN]u8,
+    rs: ecdh.Public_Key,
+    re: ecdh.Public_Key,
     protocol_name := DEFAULT_PROTOCOL_NAME
 ) -> (HandshakeState, NoiseStatus) {
     
@@ -688,15 +720,21 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
         switch token {
             case .e: {
                 self.e = GENERATE_KEYPAIR(self.symmetricstate.cipherstate.protocol)
-                elems_added, append_error := append(&message_buffer, ..self.e.public_key[:])
+                dst := make([]u8, DhLen(get_curve(self)))
+                defer delete(dst)
+                ecdh.public_key_bytes(&self.e.public, dst)
+                elems_added, append_error := append(&message_buffer, ..dst)
                 if append_error == .Out_Of_Memory {
                     fmt.eprintln("OOM")
                     return {}, {},{}, .out_of_memory
                 }
-                symmetricstate_MixHash(&self.symmetricstate, self.e.public_key[:])
+                symmetricstate_MixHash(&self.symmetricstate, dst)
             }
             case .s: {
-                temp := symmetricstate_EncryptAndHash(&self.symmetricstate, self.s.public_key[:])
+                dst := make([]u8, DhLen(self.s.public._curve))
+                defer delete(dst)
+                ecdh.public_key_bytes(&self.s.public, dst)
+                temp := symmetricstate_EncryptAndHash(&self.symmetricstate, dst)
                 append(&message_buffer, ..temp.main_body)
                 elems_added, append_error := append(&message_buffer, ..temp.tag[:])
                 if append_error == .Out_Of_Memory {
@@ -706,34 +744,34 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
             case .ee: {
                 // fmt.println("e: ", self.e)
                 // fmt.println("re: ", self.re)
-                dh := DH(self.e, self.re, self.symmetricstate.cipherstate.protocol)
-                symmetricstate_MixKey(&self.symmetricstate, dh[:])
+                dh := DH(&self.e, &self.re)
+                symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))])
             }
 
             case .es: {
                 if self.initiator {
-                    dh := DH(self.e, self.rs, self.symmetricstate.cipherstate.protocol)
-                    symmetricstate_MixKey(&self.symmetricstate, dh[:])
+                    dh := DH(&self.e, &self.rs)
+                    symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))])
                 } else {
-                    dh := DH(self.s, self.re, self.symmetricstate.cipherstate.protocol)
-                    symmetricstate_MixKey(&self.symmetricstate, dh[:])
+                    dh := DH(&self.s, &self.re)
+                    symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))])
                 }
             }
             
             case .se: {
                 if self.initiator {
-                    dh := DH(self.s, self.re, self.symmetricstate.cipherstate.protocol)
-                    symmetricstate_MixKey(&self.symmetricstate, dh[:])
+                    dh := DH(&self.s, &self.re)
+                    symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))])
                 } else {
-                    dh := DH(self.e, self.rs, self.symmetricstate.cipherstate.protocol)
-                    symmetricstate_MixKey(&self.symmetricstate, dh[:])
+                    dh := DH(&self.e, &self.rs)
+                    symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))])
                     
                 }
             }
             
             case .ss: {
-                dh := DH(self.s, self.rs, self.symmetricstate.cipherstate.protocol)
-                symmetricstate_MixKey(&self.symmetricstate, dh[:])
+                dh := DH(&self.s, &self.rs)
+                symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))])
             }
         };
     }
@@ -789,12 +827,12 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
         // fmt.println(token)
         switch token {
             case .e: {
-                re : [DHLEN]u8
-                copy(re[:], message[message_cursor : message_cursor + DHLEN])
-                message_cursor += DHLEN
-                if self.re == zeroslice {
-                    self.re = re
-                    symmetricstate_MixHash(&self.symmetricstate, self.re[:])
+                re : [MAX_DHLEN]u8
+                copy(re[:], message[message_cursor : message_cursor + DhLen(get_curve(self))])
+                message_cursor += DhLen(get_curve(self))
+                if public_key_is_zero(&self.re) {
+                    ecdh.public_key_set_bytes(&self.re, self.symmetricstate.cipherstate.protocol.dh, re[:DhLen(get_curve(self))])
+                    symmetricstate_MixHash(&self.symmetricstate, re[:DhLen(get_curve(self))])
                 } else {
                     fmt.eprintln("Implementation error: re was not empty when processing token 'e'.\nre = %v", self.re)
                     panic("Implementation error: re was not empty when processing token 'e'")
@@ -802,25 +840,25 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
             }
             case .s: {
                 if cipherstate_HasKey(&self.symmetricstate.cipherstate) {
-                    rs : [DHLEN+16]u8
-                    copy(rs[:], message[message_cursor : message_cursor + DHLEN+16])
+                    rs : [MAX_DHLEN+16]u8
+                    copy(rs[:], message[message_cursor : message_cursor + DhLen(get_curve(self))+16])
                     message_cursor += DHLEN + 16
-                    rs_buffer := cryptobuffer_from_slice(rs[:])
+                    rs_buffer := cryptobuffer_from_slice(rs[:DhLen(get_curve(self))])
                     temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
-                    if slice.equal(self.rs[:], zeroslice[:]) {
-                        self.rs = array32_from_slice(temp)
+                    if public_key_is_zero(&self.rs) {
+                        ecdh.public_key_set_bytes(&self.rs, get_curve(self), temp)
                     } else {
                         fmt.eprintln("Implementation error: rs was not empty when processing token 's'.\nre = %v", self.rs)
                         panic("Implementation error: rs was not empty when processing token 's'")
                     }
                 } else {
-                    rs : [DHLEN]u8
-                    copy(rs[:], message[message_cursor : message_cursor + DHLEN])
+                    rs : [MAX_DHLEN]u8
+                    copy(rs[:], message[message_cursor : message_cursor + DhLen(get_curve(self))])
                     message_cursor += DHLEN
                     rs_buffer := cryptobuffer_from_slice(rs[:])
                     temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
-                    if self.rs == zeroslice {
-                        copy(self.rs[:], temp)
+                    if public_key_is_zero(&self.rs) {
+                        ecdh.public_key_set_bytes(&self.rs, get_curve(self), temp)
                     } else {
                         fmt.eprintln("Implementation error: rs was not empty when processing token 's'.\nre = %v", self.rs)
                         panic("Implementation error: rs was not empty when processing token 's'")
@@ -831,33 +869,33 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
             case .ee: {
                 // fmt.println("e: ", self.e)
                 // fmt.println("re: ", self.re)
-                dh := DH(self.e, self.re, self.symmetricstate.cipherstate.protocol)
-                symmetricstate_MixKey(&self.symmetricstate, dh[:])
+                dh := DH(&self.e, &self.re)
+                symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))])
             }
 
             case .es: {
                 if self.initiator {
-                    dh := DH(self.e, self.rs, self.symmetricstate.cipherstate.protocol)
-                    symmetricstate_MixKey(&self.symmetricstate, dh[:]);  
+                    dh := DH(&self.e, &self.rs)
+                    symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))]);  
                 } else {
-                    dh := DH(self.s, self.re, self.symmetricstate.cipherstate.protocol)
-                    symmetricstate_MixKey(&self.symmetricstate, dh[:]);
+                    dh := DH(&self.s, &self.re)
+                    symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))]);
                 }
             }
             
             case .se: {
                 if self.initiator {
-                    dh := DH(self.s, self.re, self.symmetricstate.cipherstate.protocol)
-                    symmetricstate_MixKey(&self.symmetricstate, dh[:]);  
+                    dh := DH(&self.s, &self.re)
+                    symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))]);  
                 } else {
-                    dh := DH(self.e, self.rs, self.symmetricstate.cipherstate.protocol)
-                    symmetricstate_MixKey(&self.symmetricstate, dh[:]);
+                    dh := DH(&self.e, &self.rs)
+                    symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))]);
                 }
             }
             
             case .ss: {
-                dh := DH(self.s, self.rs, self.symmetricstate.cipherstate.protocol)
-                symmetricstate_MixKey(&self.symmetricstate, dh[:])
+                dh := DH(&self.s, &self.rs)
+                symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))])
             }
         };
     }
