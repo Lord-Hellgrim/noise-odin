@@ -55,3 +55,44 @@ testing_concat_bytes :: proc(t: ^testing.T) {
         delete(truth)
     }
 }
+
+@(test)
+testing_matching_cipherstates :: proc(t: ^testing.T) {
+    protocol := internals.DEFAULT_PROTOCOL
+    zeroslice : [internals.DHLEN]u8
+    initiator_handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
+        true,
+        nil,
+        internals.GENERATE_KEYPAIR(internals.DEFAULT_PROTOCOL),
+        internals.keypair_empty(protocol),
+        zeroslice,
+        zeroslice,
+        protocol_name = internals.DEFAULT_PROTOCOL_NAME,
+    )
+
+    responder_handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
+        false,
+        nil,
+        internals.GENERATE_KEYPAIR(internals.DEFAULT_PROTOCOL),
+        internals.keypair_empty(internals.DEFAULT_PROTOCOL),
+        zeroslice,
+        zeroslice,
+        protocol_name = internals.DEFAULT_PROTOCOL_NAME,
+    )
+
+    
+    message, ic1, ic2, istatus := internals.handshakestate_write_message(&initiator_handshake_state, {})
+    
+    rc1, rc2, rstatus := internals.handshakestate_read_message(&responder_handshake_state, message)
+
+    message, rc1, rc2, rstatus = internals.handshakestate_write_message(&responder_handshake_state, {})
+
+    ic1, ic2, istatus = internals.handshakestate_read_message(&initiator_handshake_state, message)
+
+    message, ic1, ic2, istatus = internals.handshakestate_write_message(&initiator_handshake_state, {})
+    
+    rc1, rc2, rstatus = internals.handshakestate_read_message(&responder_handshake_state, message)
+
+    testing.expect(t, rc1 == ic1, "Responder and initiator C1 match")
+    testing.expect(t, rc2 == ic2, "Responder and initiator C2 match")
+}

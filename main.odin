@@ -9,9 +9,6 @@ import "core:os"
 
 import "internals"
 
-multi_return :: proc(a: int, b: int, c := 1, d := 2) -> int {
-    return a+b+c+d
-}
 
 main :: proc() {
     test_message := make([]u8, 256)
@@ -20,12 +17,12 @@ main :: proc() {
         fmt.println(read_error)
         return
     }
-    protocol := DEFAULT_PROTOCOL
+    protocol := internals.DEFAULT_PROTOCOL
     zeroslice : [internals.DHLEN]u8
     initiator_handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
         true,
         nil,
-        internals.TEST_INI_KEYPAIR(DEFAULT_PROTOCOL),
+        internals.GENERATE_KEYPAIR(internals.DEFAULT_PROTOCOL),
         internals.keypair_empty(protocol),
         zeroslice,
         zeroslice,
@@ -35,8 +32,8 @@ main :: proc() {
     responder_handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
         false,
         nil,
-        internals.TEST_RES_KEYPAIR(DEFAULT_PROTOCOL),
-        internals.keypair_empty(DEFAULT_PROTOCOL),
+        internals.GENERATE_KEYPAIR(internals.DEFAULT_PROTOCOL),
+        internals.keypair_empty(internals.DEFAULT_PROTOCOL),
         zeroslice,
         zeroslice,
         protocol_name = internals.DEFAULT_PROTOCOL_NAME,
