@@ -325,6 +325,12 @@ CryptoBuffer :: struct {
 /// The entire ciphertext must be indistinguishable from random if the key is secret 
 /// (note that this is an additional requirement that isn't necessarily met by all AEAD schemes).
 ENCRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, plaintext: []u8, protocol: Protocol) -> (CryptoBuffer, NoiseStatus) {
+    fmt.println("ENCRYPT:")
+    fmt.println("k: ", k)
+    fmt.println("n: ", n)
+    fmt.println("ad: ", ad)
+    fmt.println("plaintext: ", plaintext)
+
     plaintext := plaintext
 
     k := k
@@ -340,6 +346,7 @@ ENCRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, plaintext: []u8, protocol: Proto
     
     ciphertext.tag = tag
     ciphertext.main_body = plaintext
+    fmt.println("ciphertext: ", ciphertext)
 
     return ciphertext, .Ok
 }
@@ -349,7 +356,11 @@ ENCRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, plaintext: []u8, protocol: Proto
 /// and associated data ad. Returns the plaintext, unless authentication fails, 
 /// in which case an error is signaled to the caller.
 DECRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, ciphertext: CryptoBuffer, protocol: Protocol) -> ([]u8, NoiseStatus) {
-    
+    fmt.println("ENCRYPT:")
+    fmt.println("k: ", k)
+    fmt.println("n: ", n)
+    fmt.println("ad: ", ad)
+    fmt.println("ciphertext: ", ciphertext)
     k := k
     
     ctx : aead.Context
@@ -486,6 +497,8 @@ cipherstate_HasKey :: proc(self: ^CipherState) -> bool {
 
 ///If k is non-empty returns ENCRYPT(k, n++, ad, plaintext). Otherwise returns plaintext.
 cipherstate_EncryptWithAd :: proc(self: ^CipherState, ad: []u8, plaintext: []u8) -> CryptoBuffer {
+    // fmt.println("EncryptWithAd", self)  
+    // fmt.println("AD: ", ad) 
     if cipherstate_HasKey(self) {
         temp, encrypt_error := ENCRYPT(self.k, self.n, ad, plaintext, self.protocol)
         if encrypt_error != .Ok {
@@ -502,9 +515,12 @@ cipherstate_EncryptWithAd :: proc(self: ^CipherState, ad: []u8, plaintext: []u8)
 /// If k is non-empty returns DECRYPT(k, n++, ad, ciphertext). Otherwise returns ciphertext. 
 /// If an authentication failure occurs in DECRYPT() then n is not incremented and an error is signaled to the caller.
 cipherstate_DecryptWithAd :: proc(self: ^CipherState, ad: []u8, ciphertext: CryptoBuffer) -> ([]u8, NoiseStatus) {
+    // fmt.println("DecryptWithAd", self)
+    // fmt.println("AD: ", ad) 
     if cipherstate_HasKey(self) {
         plaintext, decrypt_error := DECRYPT(self.k, self.n, ad, ciphertext, self.protocol)
         self.n += 1;
+        fmt.println(decrypt_error)
         return plaintext, decrypt_error
     } else {
         return ciphertext.main_body, .Ok
@@ -839,30 +855,22 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
                 }
             }
             case .s: {
+                rs_size : int
                 if cipherstate_HasKey(&self.symmetricstate.cipherstate) {
-                    rs : [MAX_DHLEN+16]u8
-                    copy(rs[:], message[message_cursor : message_cursor + DhLen(get_curve(self))+16])
-                    message_cursor += DHLEN + 16
-                    rs_buffer := cryptobuffer_from_slice(rs[:DhLen(get_curve(self))])
-                    temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
-                    if public_key_is_zero(&self.rs) {
-                        ecdh.public_key_set_bytes(&self.rs, get_curve(self), temp)
-                    } else {
-                        fmt.eprintln("Implementation error: rs was not empty when processing token 's'.\nre = %v", self.rs)
-                        panic("Implementation error: rs was not empty when processing token 's'")
-                    }
+                    rs_size = DhLen(get_curve(self)) + 16
                 } else {
-                    rs : [MAX_DHLEN]u8
-                    copy(rs[:], message[message_cursor : message_cursor + DhLen(get_curve(self))])
-                    message_cursor += DHLEN
-                    rs_buffer := cryptobuffer_from_slice(rs[:])
-                    temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
-                    if public_key_is_zero(&self.rs) {
-                        ecdh.public_key_set_bytes(&self.rs, get_curve(self), temp)
-                    } else {
-                        fmt.eprintln("Implementation error: rs was not empty when processing token 's'.\nre = %v", self.rs)
-                        panic("Implementation error: rs was not empty when processing token 's'")
-                    }
+                    rs_size = DhLen(get_curve(self))
+                }
+                rs : [MAX_DHLEN+16]u8
+                copy(rs[:], message[message_cursor : message_cursor + rs_size])
+                message_cursor += rs_size
+                rs_buffer := cryptobuffer_from_slice(rs[:rs_size])
+                temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
+                if public_key_is_zero(&self.rs) {
+                    ecdh.public_key_set_bytes(&self.rs, get_curve(self), temp)
+                } else {
+                    fmt.eprintln("Implementation error: rs was not empty when processing token 's'.\nre = %v", self.rs)
+                    panic("Implementation error: rs was not empty when processing token 's'")
                 }
             }
             
