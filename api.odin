@@ -50,25 +50,28 @@ connection_send :: proc(self: ^Connection, message: []u8) -> NoiseStatus {
         }
     }
     ciphertext_len := internals.to_le_bytes(u64(len(ciphertext.main_body) + 24))
-    fmt.println("ciphertext_len: %v", ciphertext_len)
     net.send_tcp(self.socket, ciphertext_len[:])
     net.send_tcp(self.socket, ciphertext.main_body)
     net.send_tcp(self.socket, ciphertext.tag[:])
     return .Ok
 }
 
+connection_alloc_and_receive :: proc(self: ^Connection, allocator := context.allocator) -> ([dynamic]u8, NoiseStatus) {
+    data := make([dynamic]u8)
+    result := connection_receive(self, &data)
 
-connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseStatus) {
+    return data, result
+}
+
+connection_receive :: proc(self: ^Connection, data: ^[dynamic]u8, allocator := context.allocator) -> (NoiseStatus) {
     size_buffer : [8]u8
     net.recv_tcp(self.socket, size_buffer[:])
 
     data_len := internals.u64_from_be_slice(size_buffer[:])
     if data_len >  internals.MAX_PACKET_SIZE {
         fmt.println("data_len: %v", data_len)
-        return nil, .Io
+        return .Io
     }
-    data := make_dynamic_array([dynamic]u8)
-    defer delete(data)
     buffer : [4096]u8
     total_read: u64 = 0
     
@@ -77,13 +80,13 @@ connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseStatus) {
         bytes_received, status := net.recv_tcp(self.socket, buffer[:to_read])
         fmt.println(status)
         if bytes_received == 0 {
-            return nil, .Io
+            return .Io
         }
-        internals.extend_from_slice(&data, buffer[:bytes_received])
+        append(data, ..buffer[:bytes_received])
         total_read += u64(bytes_received)
     }
 
-    data_buffer := internals.cryptobuffer_from_slice(data[:])
+    data_buffer := internals.cryptobuffer_from_slice(buffer[:])
 
     decrypted_data: []u8
     switch self.initiator {
@@ -96,7 +99,7 @@ connection_receive :: proc(self: ^Connection) -> ([]u8, NoiseStatus) {
 
     };
 
-    return decrypted_data, .Ok
+    return .Ok
 }
 
 ConnectionStatus :: enum {
