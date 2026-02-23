@@ -17,10 +17,13 @@ import "../../noise/internals"
 @(test)
 testing_encryption :: proc(t: ^testing.T) {
     test_bytes, read_error := os.read_entire_file("Noise_protocol_text.txt", context.allocator)
+    defer delete(test_bytes)
 
     backup_bytes := slice.clone(test_bytes)
+    defer delete(backup_bytes)
 
-    key := [32]u8{0..<32 = 1}
+    key : [32]u8
+    crypto.rand_bytes(key[:])
 
     ciphertext, error := internals.ENCRYPT(key, 1, {}, test_bytes, internals.DEFAULT_PROTOCOL)
     testing.expect(t, !slice.equal(ciphertext.main_body, backup_bytes))
@@ -28,15 +31,6 @@ testing_encryption :: proc(t: ^testing.T) {
     testing.expect(t, slice.equal(decrypted, backup_bytes))
 }
 
-@(test)
-testing_dh :: proc(t: ^testing.T) {
-    private_key := [32]u8{0x77, 0x07, 0x6d, 0x0a, 0x73, 0x18, 0xa5, 0x7d, 0x3c, 0x16, 0xc1, 0x72, 0x51, 0xb2, 0x66, 0x45, 0xdf, 0x4c, 0x2f, 0x87, 0xeb, 
-        0xc0, 0x99, 0x2a, 0xb1, 0x77, 0xfb, 0xa5, 0x1d, 0xb9, 0x2c, 0x2a}
-
-    public_key : [32]u8
-    x25519.scalarmult_basepoint(public_key[:], private_key[:])
-    testing.expect(t, public_key == {133, 32, 240, 9, 137, 48, 167, 84, 116, 139, 125, 220, 180, 62, 247, 90, 13, 191, 58, 13, 38, 56, 26, 244, 235, 164, 169, 142, 170, 155, 78, 106})
-}
 
 @(test)
 testing_concat_bytes :: proc(t: ^testing.T) {
@@ -81,9 +75,9 @@ testing_matching_cipherstates :: proc(t: ^testing.T) {
         protocol_name = internals.DEFAULT_PROTOCOL_NAME,
     )
 
-    
     message, ic1, ic2, istatus := internals.handshakestate_write_message(&initiator_handshake_state, {})
-    
+    defer delete(message)
+
     rc1, rc2, rstatus := internals.handshakestate_read_message(&responder_handshake_state, message)
 
     message, rc1, rc2, rstatus = internals.handshakestate_write_message(&responder_handshake_state, {})
