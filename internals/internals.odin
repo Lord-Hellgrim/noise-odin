@@ -139,7 +139,7 @@ Result :: union($T: typeid) {
 parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus) {
     // Default protocol string "Noise_XX_25519_AESGCM_SHA512"
 
-    if len(protocol_string) > 128 {
+    if len(protocol_string) > 255 {
         return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
