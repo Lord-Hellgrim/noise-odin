@@ -131,40 +131,60 @@ ERROR_PROTOCOL :: Protocol {
     hash = nil
 }
 
+Result :: union($T: typeid) {
+    T,
+    NoiseStatus
+}
+
 parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus) {
     // Default protocol string "Noise_XX_25519_AESGCM_SHA512"
 
-    if len(protocol_string) > 50 {
+    if len(protocol_string) > 128 {
         return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
     protocol : Protocol
-    split := strings.split(protocol_string, "_")
-    defer delete(split)
-    if len(split) != 5 {
+    underline : [4]u8
+
+    count := 0
+    for i in 0..<len(protocol_string) {
+        if protocol_string[i] == '_' {
+            underline[count] = u8(i)
+            count += 1
+        }
+    }
+
+    if count != 4 {
         return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
-    switch split[1] {
+    fmt.println(protocol_string[underline[0]+1 : underline[1]])
+
+    switch protocol_string[underline[0]+1 : underline[1]] {
         case "XX": protocol.handshake_pattern = .XX
         case "NK": protocol.handshake_pattern = .NK
         case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
-    switch split[2] {
+    fmt.println(protocol_string[underline[1]+1 : underline[2]])
+    switch protocol_string[underline[1]+1 : underline[2]] {
         case "25519": protocol.dh = .X25519
         case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
-    switch split[3] {
+    fmt.println(protocol_string[underline[2]+1 : underline[3]])
+    switch protocol_string[underline[2]+1 : underline[3]] {
         case "AESGCM": protocol.cipher = .AES256gcm
         case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
-    switch split[4] {
+    fmt.println(protocol_string[underline[3]+1 : ])
+    switch protocol_string[underline[3]+1 : ] {
         case "SHA512": protocol.hash = .SHA512
         case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
+
+    fmt.println(protocol)
 
     return protocol, .Ok
 
@@ -832,8 +852,8 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
                     ecdh.public_key_set_bytes(&self.re, self.symmetricstate.cipherstate.protocol.dh, re[:DhLen(get_curve(self))])
                     symmetricstate_MixHash(&self.symmetricstate, re[:DhLen(get_curve(self))])
                 } else {
-                    fmt.eprintln("Implementation error: re was not empty when processing token 'e'.\nre = %v", self.re)
-                    panic("Implementation error: re was not empty when processing token 'e'")
+                    fmt.eprintln("Implementation error: re was not empty when processing token 'e' during read_message.\nre = %v", self.re)
+                    panic("Implementation error: re was not empty when processing token 'e' during read_message")
                 }
             }
             case .s: {
@@ -900,7 +920,7 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
         self.current_pattern = 0
         return sender, receiver, .Handshake_Complete
     } else {
-        return CipherState{}, CipherState{}, .Pending_Handshake
+        return {}, {}, .Pending_Handshake
     }
 }
 
@@ -911,24 +931,16 @@ array32_from_slice :: proc(slice: []u8) -> [32]u8 {
 }
 
 
-
-extend_from_slice :: proc(array: ^[dynamic]u8, slice: []u8) {
-    for byte in slice {
-        append(array, byte)
-    }
-}
-
-
-/// Creates a uintptr from a &[u8] of length 8. Panics if len is different than 8.
+/// Creates a uintptr from a []u8 of length exactly 8. Panics if len is different than 8.
 u64_from_le_slice :: proc(slice: []u8) -> u64 {
-    assert(len(slice) >= 8)
+    assert(len(slice) == 8)
     l: u64 = u64(slice[0]) | u64(slice[1])<<8 | u64(slice[2])<<16 | u64(slice[3])<<24 | u64(slice[4])<<32 | u64(slice[5])<<40 | u64(slice[6])<<48 | u64(slice[7])<<56
     return l
 }
 
-/// Creates a uintptr from a &[u8] of length 8. Panics if len is different than 8.
+/// Creates a uintptr from a []u8 of length exactly 8. Panics if len is different than 8.
 u64_from_be_slice :: proc(slice: []u8) -> u64 {
-    assert(len(slice) >= 8)
+    assert(len(slice) == 8)
     l: u64 = u64(slice[7]) | u64(slice[6])<<8 | u64(slice[5])<<16 | u64(slice[4])<<24 | u64(slice[3])<<32 | u64(slice[2])<<40 | u64(slice[1])<<48 | u64(slice[0])<<56
     return l
 }
@@ -1029,13 +1041,13 @@ slices_do_not_overlap :: proc(a: []$A, b: []$B) -> bool {
     }
 }
 
-SliceTracker :: struct {
-    slice: []u8,
-    cursor: int,
-}
+// SliceTracker :: struct {
+//     slice: []u8,
+//     cursor: int,
+// }
 
-push_to_slice :: proc(dst: ^SliceTracker, src: []u8) -> int {
-    ret := copy(dst.slice[dst.cursor:dst.cursor+len(src)], src)
-    dst.cursor += len(src)
-    return ret
-}
+// push_to_slice :: proc(dst: ^SliceTracker, src: []u8) -> int {
+//     ret := copy(dst.slice[dst.cursor:dst.cursor+len(src)], src)
+//     dst.cursor += len(src)
+//     return ret
+// }

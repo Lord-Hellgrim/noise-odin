@@ -16,12 +16,19 @@ keypair_random :: internals.keypair_random
 parse_protocol_string :: internals.parse_protocol_string
 
 // levels of abstraction
-// Top -> send_data(data, address) Cache connection details in global data
-// level 1 -> open/accept, send/receive, close
-// level 2 -> step_by_step_open, send/receive all (calls send_receive until EOF), close
-// level 3 -> step_by_step_open, step_by_step send/receive ( mostly receive ), close
-// level 4 -> step_by_step open, user handles sockets, prepare for sending/receiving
-// level 5 -> ???
+// level 1 -> 
+//      send_data(data, address)
+// level 2 -> 
+//      initiate_connection_all_the_way(address, options := default_options) -> Connection, Status
+//      accept_connection_all_the_way(socket, options := default options) -> Connection, Status 
+//      connection_send(Connection, data, options := default_options) -> Status
+//      connection_receive(Connection, options := default_options) -> data, Status
+//      close_connection(Connection) -> Status
+// level 3 -> 
+//      step_connection(^Connection, ^HandshakeState, options := default) -> ConnectionStatus
+// level 4 -> 
+//      prepare_handshake_step(data, ^HandshakeState) -> distinct? []u8, Status
+//      prepare_message(data, CipherStates) -> distinct? []u8, Status
 
 
 Connection :: struct {
@@ -37,6 +44,7 @@ CipherStates :: struct {
     r_to_i: internals.CipherState,
     initiator: bool,
 }
+
 
 connection_send :: proc(self: ^Connection, message: []u8) -> NoiseStatus {
     fmt.println("calling connection_send")
