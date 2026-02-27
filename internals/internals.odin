@@ -2,10 +2,12 @@ package internals
 
 
 import "core:crypto"
+import "core:crypto/hash"
 import "core:crypto/x25519"
 import "core:crypto/aead"
 import "core:crypto/sha2"
 import "core:crypto/ecdh"
+import "core:math/rand"
 
 import "core:slice"
 import "core:strings"
@@ -44,18 +46,21 @@ NoiseStatus :: enum {
 }
 
 
-DhType :: enum {
+DhType :: enum u8 {
     x25519,
     x448,
 }
 
-CipherType :: enum {
+CipherType :: enum u8 {
     AES256gcm,
+    ChaChaPoly,
 }
 
-HashType :: enum {
+HashType :: enum u8 {
     SHA256,
     SHA512,
+    Blake2s,
+    Blake2b,
 }
 
 DhLen :: proc(dh: ecdh.Curve) -> int {
@@ -70,6 +75,8 @@ HashLen :: proc(hash: HashType) -> int {
     switch hash {
         case .SHA256: return 32
         case .SHA512: return 64
+        case .Blake2s: return 32
+        case .Blake2b: return 64
     }
     return 0
 }
@@ -78,6 +85,8 @@ BlockLen ::  proc(hash: HashType) -> int {
     switch hash {
         case .SHA256: return 64
         case .SHA512: return 128
+        case .Blake2s: return 64
+        case .Blake2b: return 128
     }
     return 0
 }
@@ -88,7 +97,7 @@ MAX_BLOCKLEN :: 128
 
 
 // Supported handshake patterns will be listed here.
-HandshakePattern :: enum {
+HandshakePattern :: enum u8 {
     XX,
     NK
 }
@@ -169,18 +178,23 @@ parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus
     fmt.println(protocol_string[underline[1]+1 : underline[2]])
     switch protocol_string[underline[1]+1 : underline[2]] {
         case "25519": protocol.dh = .X25519
+        case "448": protocol.dh = .X448
         case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
     fmt.println(protocol_string[underline[2]+1 : underline[3]])
     switch protocol_string[underline[2]+1 : underline[3]] {
         case "AESGCM": protocol.cipher = .AES256gcm
+        case "ChaChaPoly": protocol.cipher = .ChaChaPoly
         case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
     fmt.println(protocol_string[underline[3]+1 : ])
     switch protocol_string[underline[3]+1 : ] {
         case "SHA512": protocol.hash = .SHA512
+        case "SHA256": protocol.hash = .SHA256
+        case "Blake2s": protocol.hash = .Blake2s
+        case "Blake2b": protocol.hash = .Blake2b
         case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
@@ -190,36 +204,27 @@ parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus
 
 }
 
+dhtype_to_curve :: proc(dh: DhType) -> ecdh.Curve {
+    crv : ecdh.Curve
+    switch dh {
+        case .x25519:   crv = .X25519
+        case .x448:     crv = .X448
+    }
+    return crv
+}
 
-
-// KeyPair :: struct {
-//     public_key: [DHLEN]u8,
-//     private_key: [DHLEN]u8,
-// }
-
-// keypair_empty :: proc(protocol: Protocol) -> KeyPair {
-//     public : [DHLEN]u8
-//     private: [DHLEN]u8
-//     return KeyPair {
-//         public_key = public, 
-//         private_key = private,
-//     }
-// }
-
-// keypair_random :: proc(protocol: Protocol) -> KeyPair {
-//     private_key: [DHLEN]u8;
-//     crypto.rand_bytes(private_key[:])
-
-//     public_key : [DHLEN]u8;
-//     x25519.scalarmult_basepoint(public_key[:], private_key[:])
-
-//     return KeyPair {
-//         private_key = private_key,
-//         public_key = public_key,
-//     }
-// }
-
-
+random_protocol :: proc() -> Protocol {
+    cipher  := CipherType(rand.int_range(0, len(CipherType)))
+    dh      := DhType(rand.int_range(0, len(DhType)))
+    hash    := HashType(rand.int_range(0, len(HashType)))
+    HandP   := HandshakePattern(rand.int_range(0, len(HandshakePattern)))
+    return Protocol {
+        cipher = cipher,
+        dh = dhtype_to_curve(dh),
+        hash = hash,
+        handshake_pattern = HandP,
+    }
+}
 
 
 /// Generates a new Diffie-Hellman key pair. A DH key pair consists of public_key and private_key elements. 
@@ -228,31 +233,6 @@ parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus
 GENERATE_KEYPAIR :: proc(protocol: Protocol) -> KeyPair {
     return keypair_random(protocol)
 }
-
-// TEST_INI_KEYPAIR :: proc(protocol: Protocol) -> KeyPair {
-//     private_key := [DHLEN]u8{0..<32 = 1}
-
-//     public_key : [DHLEN]u8;
-//     x25519.scalarmult_basepoint(public_key[:], private_key[:])
-
-//     return KeyPair {
-//         private_key = private_key,
-//         public_key = public_key,
-//     }
-// }
-
-// TEST_RES_KEYPAIR :: proc(protocol: Protocol) -> KeyPair {
-//     private_key := [DHLEN]u8{0..<32 = 2}
-
-//     public_key : [DHLEN]u8;
-//     x25519.scalarmult_basepoint(public_key[:], private_key[:])
-
-//     return KeyPair {
-//         private_key = private_key,
-//         public_key = public_key,
-//     }
-// }
-
 
 /// Performs a Diffie-Hellman calculation between the private key in key_pair and the public_key 
 /// and returns an output sequence of bytes of length DHLEN. 
@@ -354,8 +334,14 @@ ENCRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, plaintext: []u8, protocol: Proto
 
     ctx : aead.Context
     iv := nonce_from_u64(n)
+
+    algo : aead.Algorithm
+    switch protocol.cipher {
+        case .AES256gcm: algo = .AES_GCM_256
+        case .ChaChaPoly: algo = .CHACHA20POLY1305
+    }
     
-    aead.init(&ctx, aead.Algorithm.AES_GCM_256, k[:])
+    aead.init(&ctx, algo, k[:])
     aead.seal_ctx(&ctx, plaintext, tag[:], iv[:], ad, plaintext)
     
     ciphertext.tag = tag
@@ -375,7 +361,13 @@ DECRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, ciphertext: CryptoBuffer, protoc
     iv := nonce_from_u64(n)
     tag := ciphertext.tag
 
-    aead.init(&ctx, aead.Algorithm.AES_GCM_256, k[:])
+    algo : aead.Algorithm
+    switch protocol.cipher {
+        case .AES256gcm: algo = .AES_GCM_256
+        case .ChaChaPoly: algo = .CHACHA20POLY1305
+    }
+
+    aead.init(&ctx, algo, k[:])
     if aead.open_ctx(&ctx, ciphertext.main_body, iv[:], ad, ciphertext.main_body, tag[:]) {
         return ciphertext.main_body, .Ok
     } else {
@@ -384,17 +376,26 @@ DECRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, ciphertext: CryptoBuffer, protoc
 }
 
 /// Hashes some arbitrary-length data with a collision-resistant cryptographic hash function and returns an output of HASHLEN bytes.
-HASH :: proc(protocol: Protocol, data: ..[]u8) -> [HASHLEN]u8 {
-    ctx : sha2.Context_256
-    sha2.init_256(&ctx)
+HASH :: proc(protocol: Protocol, data: ..[]u8) -> [MAX_HASHLEN]u8 {
+
+    algo : hash.Algorithm
+    switch protocol.hash {
+        case .SHA256: algo = .SHA256
+        case .SHA512: algo = .SHA512
+        case .Blake2s: algo = .BLAKE2S
+        case .Blake2b: algo = .BLAKE2B
+    }
+
+    ctx : hash.Context
+    hash.init(&ctx, algo)
 
     for datum in data {
-        sha2.update(&ctx, datum)
+        hash.update(&ctx, datum)
     }
-    hash : [HASHLEN]u8
-    sha2.final(&ctx, hash[:])
+    result : [MAX_HASHLEN]u8
+    hash.final(&ctx, result[:HashLen(protocol.hash)])
 
-    return hash
+    return result
 }
 
 
