@@ -102,7 +102,6 @@ HandshakePattern :: enum u8 {
     NK
 }
 
-DEFAULT_PROTOCOL_NAME :: "Noise_XX_25519_AESGCM_SHA512";
 
 @(rodata)
 PATTERN_XX : [][]Token = {
@@ -125,6 +124,8 @@ Protocol :: struct {
     cipher: CipherType,
     hash: HashType,
 }
+
+DEFAULT_PROTOCOL_NAME :: "Noise_XX_25519_AESGCM_SHA256";
 
 DEFAULT_PROTOCOL :: Protocol {
     handshake_pattern = .XX,
@@ -167,7 +168,6 @@ parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus
         return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
-    fmt.println(protocol_string[underline[0]+1 : underline[1]])
 
     switch protocol_string[underline[0]+1 : underline[1]] {
         case "XX": protocol.handshake_pattern = .XX
@@ -175,21 +175,18 @@ parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus
         case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
-    fmt.println(protocol_string[underline[1]+1 : underline[2]])
     switch protocol_string[underline[1]+1 : underline[2]] {
         case "25519": protocol.dh = .X25519
         case "448": protocol.dh = .X448
         case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
-    fmt.println(protocol_string[underline[2]+1 : underline[3]])
     switch protocol_string[underline[2]+1 : underline[3]] {
         case "AESGCM": protocol.cipher = .AES256gcm
         case "ChaChaPoly": protocol.cipher = .ChaChaPoly
         case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
-    fmt.println(protocol_string[underline[3]+1 : ])
     switch protocol_string[underline[3]+1 : ] {
         case "SHA512": protocol.hash = .SHA512
         case "SHA256": protocol.hash = .SHA256
@@ -197,8 +194,6 @@ parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus
         case "Blake2b": protocol.hash = .Blake2b
         case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
-
-    fmt.println(protocol)
 
     return protocol, .Ok
 
@@ -224,6 +219,32 @@ random_protocol :: proc() -> Protocol {
         hash = hash,
         handshake_pattern = HandP,
     }
+}
+
+protocol_text_from_struct :: proc(protocol: Protocol) -> string {
+    s := strings.builder_make()
+
+    hp := protocol.handshake_pattern
+    dh : string
+    switch protocol.dh {
+        case .X25519: dh = "25519"
+        case .X448: dh = "448"
+        case .SECP256R1: dh = "SECP256R1"
+        case .SECP384R1: dh = "SECP384R1"
+        case .Invalid: panic("Invalid DH curve passed to printer function")    
+    }
+
+    c : string
+    switch protocol.cipher {
+        case .AES256gcm: c = "AESGCM"
+        case .ChaChaPoly: c = "ChaChaPoly"
+    }
+
+    h := protocol.hash
+
+    fmt.sbprintf(&s, "Noise_%v_%v_%v_%v", hp, dh, c, h)
+
+    return strings.to_string(s)
 }
 
 
@@ -412,14 +433,16 @@ REKEY :: proc(k: [DHLEN]u8, protocol: Protocol) -> [DHLEN]u8 {
     return new_key
 }
 
-HMAC_HASH :: proc(K: [HASHLEN]u8, text: []u8, protocol: Protocol) -> [HASHLEN]u8 {
-    K := K
-    new_K := zeropad128(K[:])
+// HMAC-HASH(key, data): Applies HMAC from [3] using the HASH() function. 
+// This function is only called as part of HKDF(), below
+HMAC_HASH :: proc(K: []u8, text: []u8, protocol: Protocol) -> [MAX_HASHLEN]u8 {
+
+    new_K := zeropad128(K)
     temp1 := array_xor(new_K, IPAD)
     temp2 := array_xor(new_K, OPAD)
 
-    inner: [HASHLEN]u8 = HASH(protocol, temp1[:], text);
-    outer: [HASHLEN]u8 = HASH(protocol, temp2[:], inner[:]);
+    inner: [MAX_HASHLEN]u8 = HASH(protocol, temp1[:], text);
+    outer: [MAX_HASHLEN]u8 = HASH(protocol, temp2[:], inner[:]);
     return outer
 }
 
@@ -432,17 +455,17 @@ HMAC_HASH :: proc(K: [HASHLEN]u8, text: []u8, protocol: Protocol) -> [HASHLEN]u8
 ///  - Sets output3 = HMAC-HASH(temp_key, output2 || byte(0x03)).
 ///  - Returns the triple (output1, output2, output3).
 ///  - Note that temp_key, output1, output2, and output3 are all HASHLEN bytes in length. Also note that the HKDF() function is simply HKDF from [4] with the chaining_key as HKDF salt, and zero-length HKDF info.
-HKDF :: proc(chaining_key: [HASHLEN]u8, input_key_material: []u8, protocol: Protocol) -> ([HASHLEN]u8, [HASHLEN]u8, [HASHLEN]u8) {
+HKDF :: proc(chaining_key: []u8, input_key_material: []u8, protocol: Protocol) -> ([MAX_HASHLEN]u8, [MAX_HASHLEN]u8, [MAX_HASHLEN]u8) {
     assert(len(input_key_material) == 0 || len(input_key_material) == 32)
     temp_key := HMAC_HASH(chaining_key, input_key_material, protocol)
-    output1 :=  HMAC_HASH(temp_key, {0x01}, protocol)
+    output1 :=  HMAC_HASH(temp_key[:], {0x01}, protocol)
     temp_bytes_2 := concat_bytes(output1[:], {0x02})
     defer delete(temp_bytes_2)
-    output2 :=  HMAC_HASH(temp_key, temp_bytes_2 , protocol)
+    output2 :=  HMAC_HASH(temp_key[:], temp_bytes_2 , protocol)
     
     temp_bytes_3 := concat_bytes(output2[:], {0x03})
     defer delete(temp_bytes_3)
-    output3 :=  HMAC_HASH(temp_key, temp_bytes_3, protocol)
+    output3 :=  HMAC_HASH(temp_key[:], temp_bytes_3, protocol)
 
     return output1, output2, output3
 } 
@@ -465,8 +488,8 @@ CipherState :: struct {
 
 SymmetricState :: struct {
     cipherstate: CipherState,
-    ck: [HASHLEN]u8,
-    h: [HASHLEN]u8,
+    ck: [MAX_HASHLEN]u8,
+    h: [MAX_HASHLEN]u8,
 }
 
 HandshakeState :: struct {
@@ -573,11 +596,11 @@ symmetricstate_InitializeSymmetric :: proc(protocol_name: string) -> (SymmetricS
 symmetricstate_MixHash :: proc(self: ^SymmetricState, data: ..[]u8, ) {
 
     if len(data) == 1 {
-        self.h = HASH(self.cipherstate.protocol, self.h[:], data[0])
+        self.h = HASH(self.cipherstate.protocol, self.h[:HashLen(self.cipherstate.protocol.hash)], data[0])
     } else if len(data) == 2 {
-        self.h = HASH(self.cipherstate.protocol, self.h[:], data[0], data[1])
+        self.h = HASH(self.cipherstate.protocol, self.h[:HashLen(self.cipherstate.protocol.hash)], data[0], data[1])
     } else if len(data) == 3 {
-        self.h = HASH(self.cipherstate.protocol, self.h[:], data[0], data[1], data[2])
+        self.h = HASH(self.cipherstate.protocol, self.h[:HashLen(self.cipherstate.protocol.hash)], data[0], data[1], data[2])
     }
 }
 
@@ -588,7 +611,7 @@ symmetricstate_MixHash :: proc(self: ^SymmetricState, data: ..[]u8, ) {
 /// Calls InitializeKey(temp_k).
 symmetricstate_MixKey :: proc(self: ^SymmetricState, input_key_material: []u8) {
     input_key_material := input_key_material
-    ck, temp_k, _ := HKDF(self.ck, input_key_material[:], self.cipherstate.protocol)
+    ck, temp_k, _ := HKDF(self.ck[:], input_key_material[:], self.cipherstate.protocol)
     self.ck = ck
     self.cipherstate = cipherstate_InitializeKey(array32_from_slice(temp_k[:]), self.cipherstate.protocol)
 }
@@ -601,7 +624,7 @@ symmetricstate_MixKey :: proc(self: ^SymmetricState, input_key_material: []u8) {
 /// Calls InitializeKey(temp_k).
 symmetricstate_MixKeyAndHash :: proc(self: ^SymmetricState, input_key_material: []u8) {
     input_key_material := input_key_material
-    ck, temp_h, temp_k := HKDF(self.ck, input_key_material[:], self.cipherstate.protocol)
+    ck, temp_h, temp_k := HKDF(self.ck[:], input_key_material[:], self.cipherstate.protocol)
     self.ck = ck
     symmetricstate_MixHash(self, temp_h[:])
     self.cipherstate = cipherstate_InitializeKey(array32_from_slice(temp_k[:]), self.cipherstate.protocol);
@@ -609,14 +632,14 @@ symmetricstate_MixKeyAndHash :: proc(self: ^SymmetricState, input_key_material: 
 
 /// Returns h. This function should only be called at the end of a handshake, i.e. after the Split() function has been called. 
 /// This function is used for channel binding, as described in Section 11.2
-symmetricstate_GetHandshakeHash :: proc(self: ^SymmetricState) -> [HASHLEN]u8 {
+symmetricstate_GetHandshakeHash :: proc(self: ^SymmetricState) -> [MAX_HASHLEN]u8 {
     return self.h
 }
 
 /// Sets ciphertext = EncryptWithAd(h, plaintext), calls MixHash(ciphertext), and returns ciphertext. 
 /// Note that if k is empty, the EncryptWithAd() call will set ciphertext equal to plaintext.
 symmetricstate_EncryptAndHash :: proc(self:  ^SymmetricState, plaintext: []u8) -> CryptoBuffer{
-    ciphertext := cipherstate_EncryptWithAd(&self.cipherstate, self.h[:], plaintext)
+    ciphertext := cipherstate_EncryptWithAd(&self.cipherstate, self.h[:HashLen(self.cipherstate.protocol.hash)], plaintext)
     symmetricstate_MixHash(self, ciphertext.main_body, ciphertext.tag[:])
     return ciphertext
 }
@@ -630,7 +653,7 @@ symmetricstate_DecryptAndHash :: proc(self:  ^SymmetricState, ciphertext: Crypto
         tag = ciphertext.tag,
     }
     defer delete(hash_text.main_body)
-    result, decrypt_error := cipherstate_DecryptWithAd(&self.cipherstate, self.h[:], ciphertext)
+    result, decrypt_error := cipherstate_DecryptWithAd(&self.cipherstate, self.h[:HashLen(self.cipherstate.protocol.hash)], ciphertext)
     if decrypt_error != .Ok {
         fmt.eprintln("decryption error: ", decrypt_error)
         panic("")
@@ -646,7 +669,7 @@ symmetricstate_DecryptAndHash :: proc(self:  ^SymmetricState, ciphertext: Crypto
 /// Calls c1.InitializeKey(temp_k1) and c2.InitializeKey(temp_k2).
 /// Returns the pair (c1, c2).
 symmetricstate_Split :: proc(self: ^SymmetricState) -> (CipherState, CipherState) {
-    temp_k1, temp_k2, _ := HKDF(self.ck, nil, self.cipherstate.protocol)
+    temp_k1, temp_k2, _ := HKDF(self.ck[:], nil, self.cipherstate.protocol)
     c1 := cipherstate_InitializeKey(array32_from_slice(temp_k1[:]), self.cipherstate.protocol)
     c2 := cipherstate_InitializeKey(array32_from_slice(temp_k2[:]), self.cipherstate.protocol)
     return c1, c2

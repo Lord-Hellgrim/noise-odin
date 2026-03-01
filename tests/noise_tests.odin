@@ -52,7 +52,7 @@ testing_concat_bytes :: proc(t: ^testing.T) {
 }
 
 @(test)
-testing_matching_cipherstates :: proc(t: ^testing.T) {
+testing_matching_cipherstates_with_default_protocol :: proc(t: ^testing.T) {
     protocol := internals.DEFAULT_PROTOCOL
     zeroslice : ecdh.Public_Key
     initiator_handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
@@ -73,6 +73,48 @@ testing_matching_cipherstates :: proc(t: ^testing.T) {
         zeroslice,
         zeroslice,
         protocol_name = internals.DEFAULT_PROTOCOL_NAME,
+    )
+
+    message, ic1, ic2, istatus := internals.handshakestate_write_message(&initiator_handshake_state, {})
+    defer delete(message)
+
+    rc1, rc2, rstatus := internals.handshakestate_read_message(&responder_handshake_state, message)
+
+    message, rc1, rc2, rstatus = internals.handshakestate_write_message(&responder_handshake_state, {})
+
+    ic1, ic2, istatus = internals.handshakestate_read_message(&initiator_handshake_state, message)
+
+    message, ic1, ic2, istatus = internals.handshakestate_write_message(&initiator_handshake_state, {})
+    
+    rc1, rc2, rstatus = internals.handshakestate_read_message(&responder_handshake_state, message)
+
+    testing.expect(t, rc1 == ic1, "Responder and initiator C1 match")
+    testing.expect(t, rc2 == ic2, "Responder and initiator C2 match")
+}
+
+@(test) 
+testing_matching_cipherstates_with_random_protocols :: proc(t: ^testing.T) {
+    protocol := internals.random_protocol()
+    protocol_name := internals.protocol_text_from_struct(protocol)
+    zeroslice : ecdh.Public_Key
+    initiator_handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
+        true,
+        nil,
+        internals.GENERATE_KEYPAIR(protocol),
+        internals.keypair_empty(protocol),
+        zeroslice,
+        zeroslice,
+        protocol_name = protocol_name,
+    )
+
+    responder_handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
+        false,
+        nil,
+        internals.GENERATE_KEYPAIR(protocol),
+        internals.keypair_empty(protocol),
+        zeroslice,
+        zeroslice,
+        protocol_name = protocol_name,
     )
 
     message, ic1, ic2, istatus := internals.handshakestate_write_message(&initiator_handshake_state, {})

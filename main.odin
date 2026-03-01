@@ -12,37 +12,35 @@ import "internals"
 
 
 main :: proc() {
-    test_message := make([]u8, 256)
-    test_string, read_error := os.read_entire_file("Noise_protocol_text.txt", context.allocator)
-    if read_error != os.General_Error.None {
-        fmt.println(read_error)
-        return
-    }
-    protocol := internals.DEFAULT_PROTOCOL
+
+    protocol := internals.random_protocol()
+    protocol_name := internals.protocol_text_from_struct(protocol)
+    fmt.println(protocol)
+    fmt.println(protocol_name)
     zeroslice : ecdh.Public_Key
     initiator_handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
         true,
         nil,
-        internals.GENERATE_KEYPAIR(internals.DEFAULT_PROTOCOL),
+        internals.GENERATE_KEYPAIR(protocol),
         internals.keypair_empty(protocol),
         zeroslice,
         zeroslice,
-        protocol_name = internals.DEFAULT_PROTOCOL_NAME,
+        protocol_name = protocol_name,
     )
 
     responder_handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
         false,
         nil,
-        internals.GENERATE_KEYPAIR(internals.DEFAULT_PROTOCOL),
-        internals.keypair_empty(internals.DEFAULT_PROTOCOL),
+        internals.GENERATE_KEYPAIR(protocol),
+        internals.keypair_empty(protocol),
         zeroslice,
         zeroslice,
-        protocol_name = internals.DEFAULT_PROTOCOL_NAME,
+        protocol_name = protocol_name,
     )
 
-    
     message, ic1, ic2, istatus := internals.handshakestate_write_message(&initiator_handshake_state, {})
-    
+    defer delete(message)
+
     rc1, rc2, rstatus := internals.handshakestate_read_message(&responder_handshake_state, message)
 
     message, rc1, rc2, rstatus = internals.handshakestate_write_message(&responder_handshake_state, {})
@@ -52,17 +50,8 @@ main :: proc() {
     message, ic1, ic2, istatus = internals.handshakestate_write_message(&initiator_handshake_state, {})
     
     rc1, rc2, rstatus = internals.handshakestate_read_message(&responder_handshake_state, message)
-    
-    // fmt.println(istatus)
-    // fmt.println(rstatus)
 
-    // assert(istatus == .Handshake_Complete)
-    // assert(rstatus == .Handshake_Complete)
-
-    fmt.println("rc1: ", rc1.k)
-    fmt.println("rc2: ", rc2.k)
-    fmt.println("ic1: ", ic1.k)
-    fmt.println("ic2: ", ic2.k)
-
+    assert(rc1 == ic1)
+    assert(rc2 == ic2)
 
 }
