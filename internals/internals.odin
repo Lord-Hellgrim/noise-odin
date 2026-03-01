@@ -1,6 +1,5 @@
 package internals
 
-
 import "core:crypto"
 import "core:crypto/hash"
 import "core:crypto/x25519"
@@ -12,6 +11,8 @@ import "core:math/rand"
 import "core:slice"
 import "core:strings"
 
+import "core:mem"
+
 import "core:simd"
 
 import "core:fmt"
@@ -19,17 +20,9 @@ import "core:fmt"
 import "core:net"
 
 
-/// A constant specifying the size in bytes of public keys and DH outputs. For security reasons, DHLEN must be 32 or greater.
-DHLEN : int :  32;
-/// A constant specifying the size in bytes of the hash output. Must be 32 or 64.
-HASHLEN: int : 32;
 
 /// A constant specifying the size in bytes that the hash function uses internally to divide its input for iterative processing. 
 /// This is needed to use the hash function with HMAC (BLOCKLEN is B in [3]).
-BLOCKLEN: int : 128;
-/// The HMAC padding strings
-IPAD: [BLOCKLEN]u8 : {0..<BLOCKLEN = 0x36}
-OPAD: [BLOCKLEN]u8 : {0..<BLOCKLEN = 0x5c}
 
 MAX_PACKET_SIZE: u64 : 65535;
 
@@ -89,6 +82,19 @@ BlockLen ::  proc(hash: HashType) -> int {
         case .Blake2b: return 128
     }
     return 0
+}
+
+/// The HMAC padding strings
+IPAD :: proc(protocol: Protocol, allocator: mem.Allocator) -> []u8 {
+    ipad := make([]u8, BlockLen(protocol.hash))
+    ipad = {0x36}
+    return ipad
+}
+
+OPAD :: proc(protocol: Protocol, allocator: mem.Allocator) -> []u8 {
+    ipad := make([]u8, BlockLen(protocol.hash))
+    ipad = {0x5c}
+    return ipad
 }
 
 MAX_DHLEN :: 56
@@ -264,9 +270,9 @@ GENERATE_KEYPAIR :: proc(protocol: Protocol) -> KeyPair {
 /// Implementations must handle invalid public keys either by returning some output which is purely a function of the public key 
 /// and does not depend on the private key, or by signaling an error to the caller. 
 /// The DH function may define more specific rules for handling invalid values.
-DH :: proc(key_pair: ^KeyPair, their_public_key: ^ecdh.Public_Key) -> [MAX_DHLEN]u8 {
-    dst : [MAX_DHLEN]u8
-    success := ecdh.ecdh(&key_pair.private, their_public_key, dst[:DhLen(their_public_key._curve)])
+DH :: proc(key_pair: ^KeyPair, their_public_key: ^ecdh.Public_Key, allocator: mem.Allocator) -> []u8 {
+    dst := make([]u8, DhLen(key_pair.private._curve), )
+    success := ecdh.ecdh(&key_pair.private, their_public_key, dst[:])
 
     if !success {
         panic("BLEH!")
@@ -345,10 +351,11 @@ CryptoBuffer :: struct {
 /// (using the terminology from [1]) and returns a ciphertext that is the same size as the plaintext plus 16 bytes for authentication data. 
 /// The entire ciphertext must be indistinguishable from random if the key is secret 
 /// (note that this is an additional requirement that isn't necessarily met by all AEAD schemes).
-ENCRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, plaintext: []u8, protocol: Protocol) -> (CryptoBuffer, NoiseStatus) {
+ENCRYPT :: proc(k: [32]u8, n: u64, ad: []u8, plaintext: []u8, protocol: Protocol) -> (CryptoBuffer, NoiseStatus) {
+    k := k
+    
     plaintext := plaintext
 
-    k := k
     tag : [16]u8
 
     ciphertext : CryptoBuffer
@@ -375,9 +382,9 @@ ENCRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, plaintext: []u8, protocol: Proto
 /// Decrypts ciphertext using a cipher key k of 32 bytes, an 8-byte unsigned integer nonce n,
 /// and associated data ad. Returns the plaintext, unless authentication fails, 
 /// in which case an error is signaled to the caller.
-DECRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, ciphertext: CryptoBuffer, protocol: Protocol) -> ([]u8, NoiseStatus) {
+DECRYPT :: proc(k: [32]u8, n: u64, ad: []u8, ciphertext: CryptoBuffer, protocol: Protocol) -> ([]u8, NoiseStatus) {
     k := k
-    
+
     ctx : aead.Context
     iv := nonce_from_u64(n)
     tag := ciphertext.tag
@@ -397,7 +404,7 @@ DECRYPT :: proc(k: [DHLEN]u8, n: u64, ad: []u8, ciphertext: CryptoBuffer, protoc
 }
 
 /// Hashes some arbitrary-length data with a collision-resistant cryptographic hash function and returns an output of HASHLEN bytes.
-HASH :: proc(protocol: Protocol, data: ..[]u8) -> [MAX_HASHLEN]u8 {
+HASH :: proc(allocator: mem.Allocator, protocol: Protocol, data: ..[]u8) -> []u8 {
 
     algo : hash.Algorithm
     switch protocol.hash {
@@ -406,15 +413,14 @@ HASH :: proc(protocol: Protocol, data: ..[]u8) -> [MAX_HASHLEN]u8 {
         case .Blake2s: algo = .BLAKE2S
         case .Blake2b: algo = .BLAKE2B
     }
-
+    
     ctx : hash.Context
     hash.init(&ctx, algo)
-
     for datum in data {
         hash.update(&ctx, datum)
     }
-    result : [MAX_HASHLEN]u8
-    hash.final(&ctx, result[:HashLen(protocol.hash)])
+    result, allocerror := make([]u8, HashLen(protocol.hash), allocator)
+    hash.final(&ctx, result)
 
     return result
 }
@@ -423,26 +429,28 @@ HASH :: proc(protocol: Protocol, data: ..[]u8) -> [MAX_HASHLEN]u8 {
 /// Returns a new 32-byte cipher key as a pseudorandom function of k. If this function is not specifically defined for some set of cipher functions, 
 /// then it defaults to returning the first 32 bytes from ENCRYPT(k,    maxnonce, zerolen, zeros), 
 /// where maxnonce equals (2^64)-1, zerolen is a zero-length byte sequence, and zeros is a sequence of 32 bytes filled with zeros.
-REKEY :: proc(k: [DHLEN]u8, protocol: Protocol) -> [DHLEN]u8 {
+REKEY :: proc(k: [32]u8, protocol: Protocol) -> [32]u8 {
     zeros : [32]u8 
     //         1  2  3  4  5  6  7  8 
     n :u64 = 0xFF_FF_FF_FF_FF_FF_FF_FF
     ENCRYPT(k, n, nil, zeros[:], protocol)
-    new_key : [DHLEN]u8
+    new_key : [32]u8
     copy(new_key[:], zeros[:])
     return new_key
 }
 
 // HMAC-HASH(key, data): Applies HMAC from [3] using the HASH() function. 
 // This function is only called as part of HKDF(), below
-HMAC_HASH :: proc(K: []u8, text: []u8, protocol: Protocol) -> [MAX_HASHLEN]u8 {
+HMAC_HASH :: proc(K: []u8, text: []u8, protocol: Protocol, allocator: mem.Allocator) -> []u8 {
 
-    new_K := zeropad128(K)
-    temp1 := array_xor(new_K, IPAD)
-    temp2 := array_xor(new_K, OPAD)
+    new_K := make([]u8, BlockLen(protocol.hash), allocator)
+    copy(new_K, K)
+    
+    temp1 := array_xor(new_K, IPAD(protocol, allocator), allocator)
+    temp2 := array_xor(new_K, OPAD(protocol, allocator), allocator)
 
-    inner: [MAX_HASHLEN]u8 = HASH(protocol, temp1[:], text);
-    outer: [MAX_HASHLEN]u8 = HASH(protocol, temp2[:], inner[:]);
+    inner := HASH(allocator, protocol, temp1[:], text)
+    outer := HASH(allocator, protocol, temp2[:], inner[:])
     return outer
 }
 
@@ -455,17 +463,15 @@ HMAC_HASH :: proc(K: []u8, text: []u8, protocol: Protocol) -> [MAX_HASHLEN]u8 {
 ///  - Sets output3 = HMAC-HASH(temp_key, output2 || byte(0x03)).
 ///  - Returns the triple (output1, output2, output3).
 ///  - Note that temp_key, output1, output2, and output3 are all HASHLEN bytes in length. Also note that the HKDF() function is simply HKDF from [4] with the chaining_key as HKDF salt, and zero-length HKDF info.
-HKDF :: proc(chaining_key: []u8, input_key_material: []u8, protocol: Protocol) -> ([MAX_HASHLEN]u8, [MAX_HASHLEN]u8, [MAX_HASHLEN]u8) {
+HKDF :: proc(chaining_key: []u8, input_key_material: []u8, protocol: Protocol, allocator: mem.Allocator) -> ([]u8, []u8, []u8) {
     assert(len(input_key_material) == 0 || len(input_key_material) == 32)
-    temp_key := HMAC_HASH(chaining_key, input_key_material, protocol)
-    output1 :=  HMAC_HASH(temp_key[:], {0x01}, protocol)
-    temp_bytes_2 := concat_bytes(output1[:], {0x02})
-    defer delete(temp_bytes_2)
-    output2 :=  HMAC_HASH(temp_key[:], temp_bytes_2 , protocol)
+    temp_key := HMAC_HASH(chaining_key, input_key_material, protocol, allocator)
+    output1 :=  HMAC_HASH(temp_key[:], {0x01}, protocol, allocator)
+    temp_bytes_2 := concat_bytes(output1[:], {0x02}, allocator)
+    output2 :=  HMAC_HASH(temp_key[:], temp_bytes_2 , protocol, allocator)
     
-    temp_bytes_3 := concat_bytes(output2[:], {0x03})
-    defer delete(temp_bytes_3)
-    output3 :=  HMAC_HASH(temp_key[:], temp_bytes_3, protocol)
+    temp_bytes_3 := concat_bytes(output2[:], {0x03}, allocator)
+    output3 :=  HMAC_HASH(temp_key[:], temp_bytes_3, protocol, allocator)
 
     return output1, output2, output3
 } 
@@ -488,8 +494,9 @@ CipherState :: struct {
 
 SymmetricState :: struct {
     cipherstate: CipherState,
-    ck: [MAX_HASHLEN]u8,
-    h: [MAX_HASHLEN]u8,
+    ck: []u8,
+    h: []u8,
+    allocator: mem.Allocator
 }
 
 HandshakeState :: struct {
@@ -509,17 +516,17 @@ get_curve :: proc(handshake_state: ^HandshakeState) -> ecdh.Curve {
 
 
 /// Sets k = key. Sets n = 0.
-cipherstate_InitializeKey :: proc(key: [DHLEN]u8, protocol: Protocol) -> CipherState {
+cipherstate_InitializeKey :: proc(key: [32]u8, protocol: Protocol) -> CipherState {
     return CipherState {
         protocol = protocol,
         k = key,
-        n = 0
+        n = 0,
     }
 }
 
 /// Returns true if k is non-empty, false otherwise.
 cipherstate_HasKey :: proc(self: ^CipherState) -> bool {
-    zeroslice : [DHLEN]u8
+    zeroslice : [32]u8
     if slice.equal(self.k[:], zeroslice[:]) {
         return false
     } else {
@@ -573,34 +580,33 @@ cipherstate_Rekey :: proc(self: ^CipherState) {
 /// Sets ck = h.
 
 /// Calls InitializeKey(empty).
-symmetricstate_InitializeSymmetric :: proc(protocol_name: string) -> (SymmetricState, NoiseStatus) {
-    zeroslice : [DHLEN]u8
+symmetricstate_InitializeSymmetric :: proc(protocol_name: string, allocator: mem.Allocator) -> (SymmetricState, NoiseStatus) {
+    zeroslice : [32]u8
     protocol, parse_error := parse_protocol_string(protocol_name)
     if parse_error == .Protocol_could_not_be_parsed {
         return SymmetricState{}, .Protocol_could_not_be_parsed
     }
-    if len(protocol_name) < HASHLEN {
-        protocol_name_bytes : [HASHLEN]u8
+    if len(protocol_name) < HashLen(protocol.hash) {
+        protocol_name_bytes := make([]u8, HashLen(protocol.hash), allocator)
         copy(protocol_name_bytes[:], protocol_name[:])
-        h := HASH(protocol, protocol_name_bytes[:]);
-        cipherstate := cipherstate_InitializeKey(zeroslice, protocol);
-        return SymmetricState {cipherstate = cipherstate, ck = h, h = h}, .Ok
+        h := HASH(allocator, protocol, protocol_name_bytes[:])
+        cipherstate := cipherstate_InitializeKey(zeroslice, protocol)
+        return SymmetricState {cipherstate = cipherstate, ck = h, h = h, allocator = allocator}, .Ok
     } else {
-        h := HASH(protocol, transmute([]u8)protocol_name);
-        cipherstate := cipherstate_InitializeKey(zeroslice, protocol);
-        return SymmetricState {cipherstate = cipherstate, ck = h, h = h}, .Ok
+        h := HASH(allocator, protocol, transmute([]u8)protocol_name)
+        cipherstate := cipherstate_InitializeKey(zeroslice, protocol)
+        return SymmetricState {cipherstate = cipherstate, ck = h, h = h, allocator = allocator}, .Ok
     }
 }
 
 /// Sets h = HASH(h || data).
 symmetricstate_MixHash :: proc(self: ^SymmetricState, data: ..[]u8, ) {
-
     if len(data) == 1 {
-        self.h = HASH(self.cipherstate.protocol, self.h[:HashLen(self.cipherstate.protocol.hash)], data[0])
+        self.h = HASH(self.allocator, self.cipherstate.protocol, self.h, data[0])
     } else if len(data) == 2 {
-        self.h = HASH(self.cipherstate.protocol, self.h[:HashLen(self.cipherstate.protocol.hash)], data[0], data[1])
+        self.h = HASH(self.allocator, self.cipherstate.protocol, self.h, data[0], data[1])
     } else if len(data) == 3 {
-        self.h = HASH(self.cipherstate.protocol, self.h[:HashLen(self.cipherstate.protocol.hash)], data[0], data[1], data[2])
+        self.h = HASH(self.allocator, self.cipherstate.protocol, self.h, data[0], data[1], data[2])
     }
 }
 
@@ -611,7 +617,7 @@ symmetricstate_MixHash :: proc(self: ^SymmetricState, data: ..[]u8, ) {
 /// Calls InitializeKey(temp_k).
 symmetricstate_MixKey :: proc(self: ^SymmetricState, input_key_material: []u8) {
     input_key_material := input_key_material
-    ck, temp_k, _ := HKDF(self.ck[:], input_key_material[:], self.cipherstate.protocol)
+    ck, temp_k, _ := HKDF(self.ck[:], input_key_material[:], self.cipherstate.protocol, self.allocator)
     self.ck = ck
     self.cipherstate = cipherstate_InitializeKey(array32_from_slice(temp_k[:]), self.cipherstate.protocol)
 }
@@ -624,7 +630,7 @@ symmetricstate_MixKey :: proc(self: ^SymmetricState, input_key_material: []u8) {
 /// Calls InitializeKey(temp_k).
 symmetricstate_MixKeyAndHash :: proc(self: ^SymmetricState, input_key_material: []u8) {
     input_key_material := input_key_material
-    ck, temp_h, temp_k := HKDF(self.ck[:], input_key_material[:], self.cipherstate.protocol)
+    ck, temp_h, temp_k := HKDF(self.ck[:], input_key_material[:], self.cipherstate.protocol, self.allocator)
     self.ck = ck
     symmetricstate_MixHash(self, temp_h[:])
     self.cipherstate = cipherstate_InitializeKey(array32_from_slice(temp_k[:]), self.cipherstate.protocol);
@@ -632,7 +638,7 @@ symmetricstate_MixKeyAndHash :: proc(self: ^SymmetricState, input_key_material: 
 
 /// Returns h. This function should only be called at the end of a handshake, i.e. after the Split() function has been called. 
 /// This function is used for channel binding, as described in Section 11.2
-symmetricstate_GetHandshakeHash :: proc(self: ^SymmetricState) -> [MAX_HASHLEN]u8 {
+symmetricstate_GetHandshakeHash :: proc(self: ^SymmetricState) -> []u8 {
     return self.h
 }
 
@@ -649,10 +655,9 @@ symmetricstate_EncryptAndHash :: proc(self:  ^SymmetricState, plaintext: []u8) -
 symmetricstate_DecryptAndHash :: proc(self:  ^SymmetricState, ciphertext: CryptoBuffer) -> ([]u8, NoiseStatus) {
     ciphertext := ciphertext
     hash_text := CryptoBuffer {
-        main_body = slice.clone(ciphertext.main_body),
+        main_body = slice.clone(ciphertext.main_body, self.allocator),
         tag = ciphertext.tag,
     }
-    defer delete(hash_text.main_body)
     result, decrypt_error := cipherstate_DecryptWithAd(&self.cipherstate, self.h[:HashLen(self.cipherstate.protocol.hash)], ciphertext)
     if decrypt_error != .Ok {
         fmt.eprintln("decryption error: ", decrypt_error)
@@ -669,7 +674,7 @@ symmetricstate_DecryptAndHash :: proc(self:  ^SymmetricState, ciphertext: Crypto
 /// Calls c1.InitializeKey(temp_k1) and c2.InitializeKey(temp_k2).
 /// Returns the pair (c1, c2).
 symmetricstate_Split :: proc(self: ^SymmetricState) -> (CipherState, CipherState) {
-    temp_k1, temp_k2, _ := HKDF(self.ck[:], nil, self.cipherstate.protocol)
+    temp_k1, temp_k2, _ := HKDF(self.ck[:], nil, self.cipherstate.protocol, self.allocator)
     c1 := cipherstate_InitializeKey(array32_from_slice(temp_k1[:]), self.cipherstate.protocol)
     c2 := cipherstate_InitializeKey(array32_from_slice(temp_k2[:]), self.cipherstate.protocol)
     return c1, c2
@@ -710,7 +715,9 @@ handshakestate_Initialize :: proc(
     protocol_name := DEFAULT_PROTOCOL_NAME
 ) -> (HandshakeState, NoiseStatus) {
     
-    symmetricstate, status := symmetricstate_InitializeSymmetric(protocol_name)
+    dynamic_arena := new(mem.Dynamic_Arena)
+    mem.dynamic_arena_init(dynamic_arena)
+    symmetricstate, status := symmetricstate_InitializeSymmetric(protocol_name, mem.dynamic_arena_allocator(dynamic_arena))
     if status == .Protocol_could_not_be_parsed {
         return HandshakeState{}, status
     }
@@ -734,6 +741,11 @@ handshakestate_Initialize :: proc(
     };
 
     return output, .Ok
+}
+
+handshakestate_destroy :: proc(state: ^HandshakeState) {
+    free(state.symmetricstate.allocator.data)
+
 }
 
 /// Takes a payload byte sequence which may be zero-length, and a message_buffer to write the output into. 
@@ -761,12 +773,12 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1;
     for token in pattern {
-
+        
         switch token {
             case .e: {
                 self.e = GENERATE_KEYPAIR(self.symmetricstate.cipherstate.protocol)
-                dst := make([]u8, DhLen(get_curve(self)))
-                defer delete(dst)
+                dst, allocerror := make([]u8, DhLen(get_curve(self)), self.symmetricstate.allocator)
+                fmt.println(allocerror)
                 ecdh.public_key_bytes(&self.e.public, dst)
                 elems_added, append_error := append(&message_buffer, ..dst)
                 if append_error == .Out_Of_Memory {
@@ -776,8 +788,7 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
                 symmetricstate_MixHash(&self.symmetricstate, dst)
             }
             case .s: {
-                dst := make([]u8, DhLen(self.s.public._curve))
-                defer delete(dst)
+                dst := make([]u8, DhLen(self.s.public._curve), self.symmetricstate.allocator)
                 ecdh.public_key_bytes(&self.s.public, dst)
                 temp := symmetricstate_EncryptAndHash(&self.symmetricstate, dst)
                 append(&message_buffer, ..temp.main_body)
@@ -787,34 +798,34 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
                 }
             }
             case .ee: {
-                dh := DH(&self.e, &self.re)
-                symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))])
+                dh := DH(&self.e, &self.re, self.symmetricstate.allocator)
+                symmetricstate_MixKey(&self.symmetricstate, dh)
             }
 
             case .es: {
                 if self.initiator {
-                    dh := DH(&self.e, &self.rs)
-                    symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))])
+                    dh := DH(&self.e, &self.rs,self.symmetricstate.allocator)
+                    symmetricstate_MixKey(&self.symmetricstate, dh)
                 } else {
-                    dh := DH(&self.s, &self.re)
-                    symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))])
+                    dh := DH(&self.s, &self.re, self.symmetricstate.allocator)
+                    symmetricstate_MixKey(&self.symmetricstate, dh)
                 }
             }
             
             case .se: {
                 if self.initiator {
-                    dh := DH(&self.s, &self.re)
-                    symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))])
+                    dh := DH(&self.s, &self.re, self.symmetricstate.allocator)
+                    symmetricstate_MixKey(&self.symmetricstate, dh)
                 } else {
-                    dh := DH(&self.e, &self.rs)
-                    symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))])
+                    dh := DH(&self.e, &self.rs,self.symmetricstate.allocator)
+                    symmetricstate_MixKey(&self.symmetricstate, dh)
                     
                 }
             }
             
             case .ss: {
-                dh := DH(&self.s, &self.rs)
-                symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))])
+                dh := DH(&self.s, &self.rs, self.symmetricstate.allocator)
+                symmetricstate_MixKey(&self.symmetricstate, dh)
             }
         };
     }
@@ -831,6 +842,7 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
     if self.current_pattern == len(self.message_patterns) {
         sender, receiver := symmetricstate_Split(&self.symmetricstate)
         self.current_pattern = 0
+        free_all(self.symmetricstate.allocator)
         return message_buffer[:], sender, receiver, .Handshake_Complete
     } else {
         return message_buffer[:], {}, {}, .Pending_Handshake
@@ -859,22 +871,22 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
 handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (CipherState, CipherState, NoiseStatus) {
+    fmt.println("READ MESSAGE")
     if len(message) < 32 {
         panic("Message len is too small to read from")
     }
-    zeroslice: [DHLEN]u8
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1
     message_cursor := 0
     for token in pattern {
         switch token {
             case .e: {
-                re : [MAX_DHLEN]u8
+                re := make([]u8, DhLen(get_curve(self)), self.symmetricstate.allocator)
                 copy(re[:], message[message_cursor : message_cursor + DhLen(get_curve(self))])
                 message_cursor += DhLen(get_curve(self))
                 if public_key_is_zero(&self.re) {
-                    ecdh.public_key_set_bytes(&self.re, self.symmetricstate.cipherstate.protocol.dh, re[:DhLen(get_curve(self))])
-                    symmetricstate_MixHash(&self.symmetricstate, re[:DhLen(get_curve(self))])
+                    ecdh.public_key_set_bytes(&self.re, self.symmetricstate.cipherstate.protocol.dh, re)
+                    symmetricstate_MixHash(&self.symmetricstate, re)
                 } else {
                     fmt.eprintln("Implementation error: re was not empty when processing token 'e' during read_message.\nre = %v", self.re)
                     panic("Implementation error: re was not empty when processing token 'e' during read_message")
@@ -887,10 +899,10 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
                 } else {
                     rs_size = DhLen(get_curve(self))
                 }
-                rs : [MAX_DHLEN+16]u8
+                rs := make([]u8, DhLen(get_curve(self))+16, self.symmetricstate.allocator)
                 copy(rs[:], message[message_cursor : message_cursor + rs_size])
                 message_cursor += rs_size
-                rs_buffer := cryptobuffer_from_slice(rs[:rs_size])
+                rs_buffer := cryptobuffer_from_slice(rs)
                 temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
                 if public_key_is_zero(&self.rs) {
                     ecdh.public_key_set_bytes(&self.rs, get_curve(self), temp)
@@ -901,33 +913,33 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
             }
             
             case .ee: {
-                dh := DH(&self.e, &self.re)
-                symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))])
+                dh := DH(&self.e, &self.re, self.symmetricstate.allocator)
+                symmetricstate_MixKey(&self.symmetricstate, dh)
             }
 
             case .es: {
                 if self.initiator {
-                    dh := DH(&self.e, &self.rs)
-                    symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))]);  
+                    dh := DH(&self.e, &self.rs,self.symmetricstate.allocator)
+                    symmetricstate_MixKey(&self.symmetricstate, dh);  
                 } else {
-                    dh := DH(&self.s, &self.re)
-                    symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))]);
+                    dh := DH(&self.s, &self.re, self.symmetricstate.allocator)
+                    symmetricstate_MixKey(&self.symmetricstate, dh);
                 }
             }
             
             case .se: {
                 if self.initiator {
-                    dh := DH(&self.s, &self.re)
-                    symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))]);  
+                    dh := DH(&self.s, &self.re, self.symmetricstate.allocator)
+                    symmetricstate_MixKey(&self.symmetricstate, dh);  
                 } else {
-                    dh := DH(&self.e, &self.rs)
-                    symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))]);
+                    dh := DH(&self.e, &self.rs, self.symmetricstate.allocator)
+                    symmetricstate_MixKey(&self.symmetricstate, dh);
                 }
             }
             
             case .ss: {
-                dh := DH(&self.s, &self.rs)
-                symmetricstate_MixKey(&self.symmetricstate, dh[:DhLen(get_curve(self))])
+                dh := DH(&self.s, &self.rs, self.symmetricstate.allocator)
+                symmetricstate_MixKey(&self.symmetricstate, dh)
             }
         };
     }
@@ -942,6 +954,7 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
     if self.current_pattern == len(self.message_patterns) {
         sender, receiver := symmetricstate_Split(&self.symmetricstate)
         self.current_pattern = 0
+        free_all(self.symmetricstate.allocator)
         return sender, receiver, .Handshake_Complete
     } else {
         return {}, {}, .Pending_Handshake
@@ -1013,18 +1026,27 @@ nonce_from_u64 :: proc(n: u64) -> [12]u8 {
 }
 
 
-array_xor :: proc(a: [BLOCKLEN]u8, b: [BLOCKLEN]u8) -> [BLOCKLEN]u8 {
-    a := a
-    b := b
-    output: [BLOCKLEN]u8
-    for i in 0..<8 {
-        blocka : simd.u8x16 = simd.from_slice(simd.u8x16, a[i*16:i*16+16]);
-        blockb : simd.u8x16 = simd.from_slice(simd.u8x16, b[i*16:i*16+16]);
-        temp := simd.to_array(blocka ~ blockb)
-        copy(output[i*16 : i*16+16], temp[:])
+array_xor :: proc(a: []u8, b: []u8, allocator: mem.Allocator) -> []u8 {
+    assert(len(a) == len(b))
+    c := make([]u8, len(a), allocator)
+    for i in 0..<len(a) {
+        c[i] = a[i] ~ b[i]
     }
-    return output
+    return c
 }
+
+// array_xor :: proc(a: [BLOCKLEN]u8, b: [BLOCKLEN]u8) -> [BLOCKLEN]u8 {
+//     a := a
+//     b := b
+//     output: [BLOCKLEN]u8
+//     for i in 0..<8 {
+//         blocka : simd.u8x16 = simd.from_slice(simd.u8x16, a[i*16:i*16+16]);
+//         blockb : simd.u8x16 = simd.from_slice(simd.u8x16, b[i*16:i*16+16]);
+//         temp := simd.to_array(blocka ~ blockb)
+//         copy(output[i*16 : i*16+16], temp[:])
+//     }
+//     return output
+// }
 
 zeropad128 :: proc(input: []u8) -> [128]u8 {
     assert(len(input) <= 128)
