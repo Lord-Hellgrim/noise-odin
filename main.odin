@@ -20,12 +20,14 @@ main :: proc() {
     fmt.println(protocol)
     fmt.println(protocol_name)
     zeroslice : ecdh.Public_Key
+    s := internals.GENERATE_KEYPAIR(protocol)
+    
     initiator_handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
         true,
         nil,
         internals.GENERATE_KEYPAIR(protocol),
         internals.keypair_empty(protocol),
-        zeroslice,
+        s.public,
         zeroslice,
         protocol_name = protocol_name,
     )
@@ -33,7 +35,7 @@ main :: proc() {
     responder_handshake_state, _ := internals.handshakestate_Initialize(  // Should always have a valid protocol name due to previous if check
         false,
         nil,
-        internals.GENERATE_KEYPAIR(protocol),
+        s,
         internals.keypair_empty(protocol),
         zeroslice,
         zeroslice,

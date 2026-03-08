@@ -118,7 +118,7 @@ PATTERN_XX : [][]Token = {
 
 @(rodata)
 PATTERN_NK : [][]Token = {
-    {.s},
+    // {.s},
     {.e, .es},
     {.e, .ee}
 }
@@ -314,19 +314,27 @@ keypair_random :: proc(protocol: Protocol) -> KeyPair {
     }
 }
 
-keypair_empty :: proc(protocol: Protocol) -> KeyPair {
-    private : ecdh.Private_Key
-    public : ecdh.Public_Key
-    return KeyPair{public = public, private = private}
-}
-
-zero_key :: proc() -> ecdh.Public_Key {
-    k : ecdh.Public_Key
+zero_key :: proc(curve: ecdh.Curve) -> ecdh.Private_Key {
+    k : ecdh.Private_Key
+    z : [MAX_DHLEN]u8
+    ecdh.private_key_generate(&k, curve)
+    ecdh.private_key_set_bytes(&k, curve, z[:])
+    ecdh.public_key_set_bytes(&k._pub_key, curve, z[:])
     return k
 }
 
+keypair_empty :: proc(protocol: Protocol) -> KeyPair {
+    private := zero_key(protocol.dh)
+    public : ecdh.Public_Key
+    ecdh.public_key_set_priv(&public, &private)
+    return KeyPair{public = public, private = private}
+}
+
+
 public_key_is_zero :: proc(public_key: ^ecdh.Public_Key) -> bool {
-    if public_key._curve == .Invalid {
+    dst : [MAX_DHLEN]u8
+    ecdh.public_key_bytes(public_key, dst[:DhLen(public_key._curve)])
+    if dst == 0 {
         return true
     } else {
         return false
@@ -334,9 +342,9 @@ public_key_is_zero :: proc(public_key: ^ecdh.Public_Key) -> bool {
 }
 
 private_key_is_zero :: proc(private_key: ^ecdh.Private_Key) -> bool {
-    dst : ecdh.Private_Key
-
-    if ecdh.private_key_equal(&dst, private_key) {
+    dst : [MAX_DHLEN]u8
+    ecdh.private_key_bytes(private_key, dst[:DhLen(private_key._curve)])
+    if dst == 0 {
         return true
     } else {
         return false
@@ -731,6 +739,7 @@ handshakestate_Initialize :: proc(
     }
 
     symmetricstate_MixHash(&symmetricstate, prologue)
+
     output := HandshakeState {
         symmetricstate = symmetricstate,
         s = s,
@@ -741,6 +750,26 @@ handshakestate_Initialize :: proc(
         message_patterns = message_pattern,
         current_pattern = 0,
     };
+
+    z := zero_key(symmetricstate.cipherstate.protocol.dh)
+
+    if output.s.private._curve == .Invalid {
+        output.s.private = z
+        output.s.public = z._pub_key
+    }
+
+    if output.e.private._curve == .Invalid {
+        output.e.private = z
+        output.e.public = z._pub_key
+    }
+
+    if output.rs._curve == .Invalid {
+        output.rs = z._pub_key
+    }
+
+    if output.re._curve == .Invalid {
+        output.re = z._pub_key
+    }
 
     return output, .Ok
 }
