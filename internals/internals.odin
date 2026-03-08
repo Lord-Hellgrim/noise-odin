@@ -271,6 +271,8 @@ GENERATE_KEYPAIR :: proc(protocol: Protocol) -> KeyPair {
 /// and does not depend on the private key, or by signaling an error to the caller. 
 /// The DH function may define more specific rules for handling invalid values.
 DH :: proc(key_pair: ^KeyPair, their_public_key: ^ecdh.Public_Key, allocator: mem.Allocator) -> []u8 {
+    fmt.println("My curve: ", key_pair.private._curve)
+    fmt.println("Their curve: ", their_public_key._curve)
     dst := make([]u8, DhLen(key_pair.private._curve), )
     success := ecdh.ecdh(&key_pair.private, their_public_key, dst[:])
 
@@ -769,16 +771,20 @@ handshakestate_destroy :: proc(state: ^HandshakeState) {
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
 handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, allocator := context.allocator) -> ([]u8, CipherState, CipherState, NoiseStatus) {
+    fmt.println("WRITE MESSAGE")
+
     message_buffer := make([dynamic]u8)
     pattern := self.message_patterns[self.current_pattern]
     self.current_pattern += 1;
     for token in pattern {
-        
+        fmt.println("token: ", token)
         switch token {
             case .e: {
                 self.e = GENERATE_KEYPAIR(self.symmetricstate.cipherstate.protocol)
                 dst, allocerror := make([]u8, DhLen(get_curve(self)), self.symmetricstate.allocator)
-                fmt.println(allocerror)
+                if allocerror != .None {
+                    fmt.println(allocerror)
+                }
                 ecdh.public_key_bytes(&self.e.public, dst)
                 elems_added, append_error := append(&message_buffer, ..dst)
                 if append_error == .Out_Of_Memory {
@@ -788,12 +794,17 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
                 symmetricstate_MixHash(&self.symmetricstate, dst)
             }
             case .s: {
+                
                 dst := make([]u8, DhLen(self.s.public._curve), self.symmetricstate.allocator)
                 ecdh.public_key_bytes(&self.s.public, dst)
                 temp := symmetricstate_EncryptAndHash(&self.symmetricstate, dst)
-                append(&message_buffer, ..temp.main_body)
-                elems_added, append_error := append(&message_buffer, ..temp.tag[:])
+                
+                _, append_error := append(&message_buffer, ..temp.main_body)
+                if cipherstate_HasKey(&self.symmetricstate.cipherstate) {
+                    _, append_error = append(&message_buffer, ..temp.tag[:])
+                }
                 if append_error == .Out_Of_Memory {
+                    fmt.eprintln("OOM")
                     return {}, {},{}, .out_of_memory
                 }
             }
@@ -879,13 +890,14 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
     self.current_pattern += 1
     message_cursor := 0
     for token in pattern {
+        fmt.println("token: ", token)
         switch token {
             case .e: {
                 re := make([]u8, DhLen(get_curve(self)), self.symmetricstate.allocator)
                 copy(re[:], message[message_cursor : message_cursor + DhLen(get_curve(self))])
                 message_cursor += DhLen(get_curve(self))
                 if public_key_is_zero(&self.re) {
-                    ecdh.public_key_set_bytes(&self.re, self.symmetricstate.cipherstate.protocol.dh, re)
+                    ecdh.public_key_set_bytes(&self.re, get_curve(self), re)
                     symmetricstate_MixHash(&self.symmetricstate, re)
                 } else {
                     fmt.eprintln("Implementation error: re was not empty when processing token 'e' during read_message.\nre = %v", self.re)
@@ -899,7 +911,7 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
                 } else {
                     rs_size = DhLen(get_curve(self))
                 }
-                rs := make([]u8, DhLen(get_curve(self))+16, self.symmetricstate.allocator)
+                rs := make([]u8, rs_size, self.symmetricstate.allocator)
                 copy(rs[:], message[message_cursor : message_cursor + rs_size])
                 message_cursor += rs_size
                 rs_buffer := cryptobuffer_from_slice(rs)

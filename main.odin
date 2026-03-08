@@ -13,8 +13,10 @@ import "internals"
 
 main :: proc() {
 
-    protocol := internals.random_protocol()
-    protocol_name := internals.protocol_text_from_struct(protocol)
+    // protocol := internals.random_protocol()
+    // protocol_name := internals.protocol_text_from_struct(protocol)
+    protocol_name := "Noise_NK_448_AESGCM_SHA256"
+    protocol, _ := internals.parse_protocol_string(protocol_name)
     fmt.println(protocol)
     fmt.println(protocol_name)
     zeroslice : ecdh.Public_Key
