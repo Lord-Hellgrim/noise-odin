@@ -86,15 +86,19 @@ BlockLen ::  proc(hash: HashType) -> int {
 
 /// The HMAC padding strings
 IPAD :: proc(protocol: Protocol, allocator: mem.Allocator) -> []u8 {
-    ipad := make([]u8, BlockLen(protocol.hash))
-    ipad = {0x36}
-    return ipad
+    opad := make([]u8, BlockLen(protocol.hash))
+    for i in 0..<len(opad) {
+        opad[i] = 0x36
+    }
+    return opad
 }
 
 OPAD :: proc(protocol: Protocol, allocator: mem.Allocator) -> []u8 {
-    ipad := make([]u8, BlockLen(protocol.hash))
-    ipad = {0x5c}
-    return ipad
+    opad := make([]u8, BlockLen(protocol.hash))
+    for i in 0..<len(opad) {
+        opad[i] = 0x5c
+    }
+    return opad
 }
 
 MAX_DHLEN :: 56
@@ -455,9 +459,12 @@ HMAC_HASH :: proc(K: []u8, text: []u8, protocol: Protocol, allocator: mem.Alloca
 
     new_K := make([]u8, BlockLen(protocol.hash), allocator)
     copy(new_K, K)
+
+    ipad := IPAD(protocol, allocator)
+    opad := OPAD(protocol, allocator)
     
-    temp1 := array_xor(new_K, IPAD(protocol, allocator), allocator)
-    temp2 := array_xor(new_K, OPAD(protocol, allocator), allocator)
+    temp1 := array_xor(new_K, ipad, allocator)
+    temp2 := array_xor(new_K, opad, allocator)
 
     inner := HASH(allocator, protocol, temp1[:], text)
     outer := HASH(allocator, protocol, temp2[:], inner[:])
@@ -474,7 +481,7 @@ HMAC_HASH :: proc(K: []u8, text: []u8, protocol: Protocol, allocator: mem.Alloca
 ///  - Returns the triple (output1, output2, output3).
 ///  - Note that temp_key, output1, output2, and output3 are all HASHLEN bytes in length. Also note that the HKDF() function is simply HKDF from [4] with the chaining_key as HKDF salt, and zero-length HKDF info.
 HKDF :: proc(chaining_key: []u8, input_key_material: []u8, protocol: Protocol, allocator: mem.Allocator) -> ([]u8, []u8, []u8) {
-    assert(len(input_key_material) == 0 || len(input_key_material) == 32)
+    assert(len(input_key_material) == 0 || len(input_key_material) == 32 || len(input_key_material) == DhLen(protocol.dh))
     temp_key := HMAC_HASH(chaining_key, input_key_material, protocol, allocator)
     output1 :=  HMAC_HASH(temp_key[:], {0x01}, protocol, allocator)
     temp_bytes_2 := concat_bytes(output1[:], {0x02}, allocator)
@@ -880,10 +887,10 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
     }
     
     if self.current_pattern == len(self.message_patterns) {
-        sender, receiver := symmetricstate_Split(&self.symmetricstate)
+        c1, c2 := symmetricstate_Split(&self.symmetricstate)
         self.current_pattern = 0
         free_all(self.symmetricstate.allocator)
-        return message_buffer[:], sender, receiver, .Handshake_Complete
+        return message_buffer[:], c1, c2, .Handshake_Complete
     } else {
         return message_buffer[:], {}, {}, .Pending_Handshake
     }
@@ -993,10 +1000,10 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
     }
 
     if self.current_pattern == len(self.message_patterns) {
-        sender, receiver := symmetricstate_Split(&self.symmetricstate)
+        c1, c2 := symmetricstate_Split(&self.symmetricstate)
         self.current_pattern = 0
         free_all(self.symmetricstate.allocator)
-        return sender, receiver, .Handshake_Complete
+        return c1, c2, .Handshake_Complete
     } else {
         return {}, {}, .Pending_Handshake
     }

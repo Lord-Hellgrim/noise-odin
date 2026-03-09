@@ -42,18 +42,33 @@ main :: proc() {
         protocol_name = protocol_name,
     )
 
-    message, ic1, ic2, istatus := internals.handshakestate_write_message(&initiator_handshake_state, {})
-    defer delete(message)
+    message : []u8
+    ic1, ic2, rc1, rc2: internals.CipherState
+    istatus, rstatus: NoiseStatus
 
-    rc1, rc2, rstatus := internals.handshakestate_read_message(&responder_handshake_state, message)
+    for {
+        message, ic, istatus = step_connection(&initiator_handshake_state, message)
+        rc1, rc2, rstatus = internals.handshakestate_read_message(&responder_handshake_state, message)
 
-    message, rc1, rc2, rstatus = internals.handshakestate_write_message(&responder_handshake_state, {})
+        if istatus == .Handshake_Complete {
+            break
+        } else if istatus != .Pending_Handshake {
+            panic("Testing error")
+        }
+    }
 
-    ic1, ic2, istatus = internals.handshakestate_read_message(&initiator_handshake_state, message)
+    // message, ic1, ic2, istatus = internals.handshakestate_write_message(&initiator_handshake_state, {})
+    // defer delete(message)
 
-    message, ic1, ic2, istatus = internals.handshakestate_write_message(&initiator_handshake_state, {})
+    // rc1, rc2, rstatus = internals.handshakestate_read_message(&responder_handshake_state, message)
+
+    // message, rc1, rc2, rstatus = internals.handshakestate_write_message(&responder_handshake_state, {})
+
+    // ic1, ic2, istatus = internals.handshakestate_read_message(&initiator_handshake_state, message)
+
+    // message, ic1, ic2, istatus = internals.handshakestate_write_message(&initiator_handshake_state, {})
     
-    rc1, rc2, rstatus = internals.handshakestate_read_message(&responder_handshake_state, message)
+    // rc1, rc2, rstatus = internals.handshakestate_read_message(&responder_handshake_state, message)
 
     assert(rc1 == ic1)
     assert(rc2 == ic2)
