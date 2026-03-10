@@ -37,6 +37,8 @@ CipherStates :: struct {
     initiator: bool,
 }
 
+initiate_connection :: proc()
+
 
 step_state :: proc(state: ^HandshakeState, message: []u8, payload: []u8 = {}) -> ([]u8, CipherStates, NoiseStatus) {
     c1, c2: internals.CipherState

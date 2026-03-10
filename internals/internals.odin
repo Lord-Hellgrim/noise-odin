@@ -85,21 +85,11 @@ BlockLen ::  proc(hash: HashType) -> int {
 }
 
 /// The HMAC padding strings
-IPAD :: proc(protocol: Protocol, allocator: mem.Allocator) -> []u8 {
-    opad := make([]u8, BlockLen(protocol.hash))
-    for i in 0..<len(opad) {
-        opad[i] = 0x36
-    }
-    return opad
-}
+@(rodata)
+IPAD : [MAX_BLOCKLEN]u8 = {0..<MAX_BLOCKLEN = 0x36}
+@(rodata)
+OPAD : [MAX_BLOCKLEN]u8 = {0..<MAX_BLOCKLEN = 0x5c} 
 
-OPAD :: proc(protocol: Protocol, allocator: mem.Allocator) -> []u8 {
-    opad := make([]u8, BlockLen(protocol.hash))
-    for i in 0..<len(opad) {
-        opad[i] = 0x5c
-    }
-    return opad
-}
 
 MAX_DHLEN :: 56
 MAX_HASHLEN :: 64
@@ -318,42 +308,44 @@ keypair_random :: proc(protocol: Protocol) -> KeyPair {
     }
 }
 
-zero_key :: proc(curve: ecdh.Curve) -> ecdh.Private_Key {
-    k : ecdh.Private_Key
-    z : [MAX_DHLEN]u8
-    ecdh.private_key_generate(&k, curve)
-    ecdh.private_key_set_bytes(&k, curve, z[:])
-    ecdh.public_key_set_bytes(&k._pub_key, curve, z[:])
-    return k
-}
+// zero_key :: proc(curve: ecdh.Curve) -> ecdh.Private_Key {
+//     k : ecdh.Private_Key
+//     z : [MAX_DHLEN]u8
+//     ecdh.private_key_generate(&k, curve)
+//     ecdh.private_key_set_bytes(&k, curve, z[:])
+//     fmt.println("Private: ", k)
+//     ecdh.public_key_set_bytes(&k._pub_key, curve, z[:])
+//     fmt.println("HERE")
+//     return k
+// }
 
-keypair_empty :: proc(protocol: Protocol) -> KeyPair {
-    private := zero_key(protocol.dh)
-    public : ecdh.Public_Key
-    ecdh.public_key_set_priv(&public, &private)
-    return KeyPair{public = public, private = private}
-}
+// keypair_empty :: proc(protocol: Protocol) -> KeyPair {
+//     private := zero_key(protocol.dh)
+//     public : ecdh.Public_Key
+//     ecdh.public_key_set_priv(&public, &private)
+//     return KeyPair{public = public, private = private}
+// }
 
 
-public_key_is_zero :: proc(public_key: ^ecdh.Public_Key) -> bool {
-    dst : [MAX_DHLEN]u8
-    ecdh.public_key_bytes(public_key, dst[:DhLen(public_key._curve)])
-    if dst == 0 {
-        return true
-    } else {
-        return false
-    }
-}
+// public_key_is_zero :: proc(public_key: ^ecdh.Public_Key) -> bool {
+//     dst : [MAX_DHLEN]u8
+//     ecdh.public_key_bytes(public_key, dst[:DhLen(public_key._curve)])
+//     if dst == 0 {
+//         return true
+//     } else {
+//         return false
+//     }
+// }
 
-private_key_is_zero :: proc(private_key: ^ecdh.Private_Key) -> bool {
-    dst : [MAX_DHLEN]u8
-    ecdh.private_key_bytes(private_key, dst[:DhLen(private_key._curve)])
-    if dst == 0 {
-        return true
-    } else {
-        return false
-    }
-}
+// private_key_is_zero :: proc(private_key: ^ecdh.Private_Key) -> bool {
+//     dst : [MAX_DHLEN]u8
+//     ecdh.private_key_bytes(private_key, dst[:DhLen(private_key._curve)])
+//     if dst == 0 {
+//         return true
+//     } else {
+//         return false
+//     }
+// }
 
 CryptoBuffer :: struct {
     main_body: []u8,
@@ -459,12 +451,9 @@ HMAC_HASH :: proc(K: []u8, text: []u8, protocol: Protocol, allocator: mem.Alloca
 
     new_K := make([]u8, BlockLen(protocol.hash), allocator)
     copy(new_K, K)
-
-    ipad := IPAD(protocol, allocator)
-    opad := OPAD(protocol, allocator)
     
-    temp1 := array_xor(new_K, ipad, allocator)
-    temp2 := array_xor(new_K, opad, allocator)
+    temp1 := array_xor(new_K, IPAD[ : BlockLen(protocol.hash)], allocator)
+    temp2 := array_xor(new_K, OPAD[ : BlockLen(protocol.hash)], allocator)
 
     inner := HASH(allocator, protocol, temp1[:], text)
     outer := HASH(allocator, protocol, temp2[:], inner[:])
@@ -518,10 +507,10 @@ SymmetricState :: struct {
 
 HandshakeState :: struct {
     symmetricstate: SymmetricState,
-    s: KeyPair,
-    e: KeyPair, 
-    rs: ecdh.Public_Key,
-    re: ecdh.Public_Key,
+    s: Maybe(KeyPair),
+    e: Maybe(KeyPair), 
+    rs: Maybe(ecdh.Public_Key),
+    re: Maybe(ecdh.Public_Key),
     initiator: bool,
     message_patterns: [][]Token,
     current_pattern: int,
@@ -607,6 +596,7 @@ symmetricstate_InitializeSymmetric :: proc(protocol_name: string, allocator: mem
         protocol_name_bytes := make([]u8, HashLen(protocol.hash), allocator)
         copy(protocol_name_bytes[:], protocol_name[:])
         h := HASH(allocator, protocol, protocol_name_bytes[:])
+        
         cipherstate := cipherstate_InitializeKey(zeroslice, protocol)
         return SymmetricState {cipherstate = cipherstate, ck = h, h = h, allocator = allocator}, .Ok
     } else {
@@ -725,13 +715,13 @@ symmetricstate_Split :: proc(self: ^SymmetricState) -> (CipherState, CipherState
 handshakestate_Initialize :: proc(
     initiator: bool,
     prologue: []u8,
-    s: KeyPair,
-    e: KeyPair,
-    rs: ecdh.Public_Key,
-    re: ecdh.Public_Key,
+    s: Maybe(KeyPair),
+    e: Maybe(KeyPair),
+    rs: Maybe(ecdh.Public_Key),
+    re: Maybe(ecdh.Public_Key),
     protocol_name := DEFAULT_PROTOCOL_NAME
 ) -> (HandshakeState, NoiseStatus) {
-    
+
     dynamic_arena := new(mem.Dynamic_Arena)
     mem.dynamic_arena_init(dynamic_arena)
     symmetricstate, status := symmetricstate_InitializeSymmetric(protocol_name, mem.dynamic_arena_allocator(dynamic_arena))
@@ -757,26 +747,6 @@ handshakestate_Initialize :: proc(
         message_patterns = message_pattern,
         current_pattern = 0,
     };
-
-    z := zero_key(symmetricstate.cipherstate.protocol.dh)
-
-    if output.s.private._curve == .Invalid {
-        output.s.private = z
-        output.s.public = z._pub_key
-    }
-
-    if output.e.private._curve == .Invalid {
-        output.e.private = z
-        output.e.public = z._pub_key
-    }
-
-    if output.rs._curve == .Invalid {
-        output.rs = z._pub_key
-    }
-
-    if output.re._curve == .Invalid {
-        output.re = z._pub_key
-    }
 
     return output, .Ok
 }
@@ -821,7 +791,11 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
                 if allocerror != .None {
                     fmt.println(allocerror)
                 }
-                ecdh.public_key_bytes(&self.e.public, dst)
+                switch &e in self.e {
+                    case KeyPair: {
+                        ecdh.public_key_bytes(&e.public, dst)
+                    }
+                }
                 elems_added, append_error := append(&message_buffer, ..dst)
                 if append_error == .Out_Of_Memory {
                     fmt.eprintln("OOM")
@@ -831,8 +805,8 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
             }
             case .s: {
                 
-                dst := make([]u8, DhLen(self.s.public._curve), self.symmetricstate.allocator)
-                ecdh.public_key_bytes(&self.s.public, dst)
+                dst := make([]u8, DhLen(self.s.?.public._curve), self.symmetricstate.allocator)
+                ecdh.public_key_bytes(&unwrap(self.s).public, dst)
                 temp := symmetricstate_EncryptAndHash(&self.symmetricstate, dst)
                 
                 _, append_error := append(&message_buffer, ..temp.main_body)
@@ -845,33 +819,33 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
                 }
             }
             case .ee: {
-                dh := DH(&self.e, &self.re, self.symmetricstate.allocator)
+                dh := DH(&self.e.?, &self.re.?, self.symmetricstate.allocator)
                 symmetricstate_MixKey(&self.symmetricstate, dh)
             }
 
             case .es: {
                 if self.initiator {
-                    dh := DH(&self.e, &self.rs,self.symmetricstate.allocator)
+                    dh := DH(&self.e.?, &self.rs.?,self.symmetricstate.allocator)
                     symmetricstate_MixKey(&self.symmetricstate, dh)
                 } else {
-                    dh := DH(&self.s, &self.re, self.symmetricstate.allocator)
+                    dh := DH(&self.s.?, &self.re.?, self.symmetricstate.allocator)
                     symmetricstate_MixKey(&self.symmetricstate, dh)
                 }
             }
             
             case .se: {
                 if self.initiator {
-                    dh := DH(&self.s, &self.re, self.symmetricstate.allocator)
+                    dh := DH(&self.s.?, &self.re.?, self.symmetricstate.allocator)
                     symmetricstate_MixKey(&self.symmetricstate, dh)
                 } else {
-                    dh := DH(&self.e, &self.rs,self.symmetricstate.allocator)
+                    dh := DH(&self.e.?, &self.rs.?,self.symmetricstate.allocator)
                     symmetricstate_MixKey(&self.symmetricstate, dh)
                     
                 }
             }
             
             case .ss: {
-                dh := DH(&self.s, &self.rs, self.symmetricstate.allocator)
+                dh := DH(&self.s.?, &self.rs.?, self.symmetricstate.allocator)
                 symmetricstate_MixKey(&self.symmetricstate, dh)
             }
         };
@@ -932,12 +906,17 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
                 re := make([]u8, DhLen(get_curve(self)), self.symmetricstate.allocator)
                 copy(re[:], message[message_cursor : message_cursor + DhLen(get_curve(self))])
                 message_cursor += DhLen(get_curve(self))
-                if public_key_is_zero(&self.re) {
-                    ecdh.public_key_set_bytes(&self.re, get_curve(self), re)
-                    symmetricstate_MixHash(&self.symmetricstate, re)
-                } else {
-                    fmt.eprintln("Implementation error: re was not empty when processing token 'e' during read_message.\nre = %v", self.re)
-                    panic("Implementation error: re was not empty when processing token 'e' during read_message")
+                switch &self_re in self.re {
+                    case nil: {
+                        temp2 : ecdh.Public_Key
+                        ecdh.public_key_set_bytes(&temp2, get_curve(self), re)
+                        self.re = temp2
+                        symmetricstate_MixHash(&self.symmetricstate, re)
+                    }
+                    case ecdh.Public_Key: {
+                        fmt.eprintln("Implementation error: re was not empty when processing token 'e' during read_message.\nre = %v", self.re)
+                        panic("Implementation error: re was not empty when processing token 'e' during read_message")
+                    }
                 }
             }
             case .s: {
@@ -952,41 +931,46 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
                 message_cursor += rs_size
                 rs_buffer := cryptobuffer_from_slice(rs)
                 temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
-                if public_key_is_zero(&self.rs) {
-                    ecdh.public_key_set_bytes(&self.rs, get_curve(self), temp)
-                } else {
-                    fmt.eprintln("Implementation error: rs was not empty when processing token 's'.\nre = %v", self.rs)
-                    panic("Implementation error: rs was not empty when processing token 's'")
+                switch &self_rs in self.rs {
+                    case nil: {
+                        temp2 : ecdh.Public_Key
+                        ecdh.public_key_set_bytes(&temp2, get_curve(self), temp)
+                        self.rs = temp2 
+                    }
+                    case ecdh.Public_Key: {
+                        fmt.eprintln("Implementation error: rs was not empty when processing token 's'.\nre = %v", self.rs)
+                        panic("Implementation error: rs was not empty when processing token 's'")
+                    } 
                 }
             }
             
             case .ee: {
-                dh := DH(&self.e, &self.re, self.symmetricstate.allocator)
+                dh := DH(&self.e.?, &self.re.?, self.symmetricstate.allocator)
                 symmetricstate_MixKey(&self.symmetricstate, dh)
             }
 
             case .es: {
                 if self.initiator {
-                    dh := DH(&self.e, &self.rs,self.symmetricstate.allocator)
+                    dh := DH(&self.e.?, &self.rs.?,self.symmetricstate.allocator)
                     symmetricstate_MixKey(&self.symmetricstate, dh);  
                 } else {
-                    dh := DH(&self.s, &self.re, self.symmetricstate.allocator)
+                    dh := DH(&self.s.?, &self.re.?, self.symmetricstate.allocator)
                     symmetricstate_MixKey(&self.symmetricstate, dh);
                 }
             }
             
             case .se: {
                 if self.initiator {
-                    dh := DH(&self.s, &self.re, self.symmetricstate.allocator)
+                    dh := DH(&self.s.?, &self.re.?, self.symmetricstate.allocator)
                     symmetricstate_MixKey(&self.symmetricstate, dh);  
                 } else {
-                    dh := DH(&self.e, &self.rs, self.symmetricstate.allocator)
+                    dh := DH(&self.e.?, &self.rs.?, self.symmetricstate.allocator)
                     symmetricstate_MixKey(&self.symmetricstate, dh);
                 }
             }
             
             case .ss: {
-                dh := DH(&self.s, &self.rs, self.symmetricstate.allocator)
+                dh := DH(&self.s.?, &self.rs.?, self.symmetricstate.allocator)
                 symmetricstate_MixKey(&self.symmetricstate, dh)
             }
         };
@@ -1013,6 +997,17 @@ array32_from_slice :: proc(slice: []u8) -> [32]u8 {
     buf : [32]u8
     copy(buf[:], slice[0 : min(len(slice), 32)])
     return buf
+}
+
+
+unwrap :: proc(m: Maybe($T)) -> ^T {
+    switch &x in m {
+        case T: {
+            return &x
+        }
+        case nil: panic("Unwrap calle don nil value")
+    }
+    return nil
 }
 
 
