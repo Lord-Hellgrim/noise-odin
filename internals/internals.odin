@@ -102,19 +102,28 @@ HandshakePattern :: enum u8 {
     NK
 }
 
-
-@(rodata)
-PATTERN_XX : [][]Token = {
-    {.e},
-    {.e, .ee, .s, .es},
-    {.s, .se}
+MessagePattern :: struct {
+    pre_messages : []Token,
+    messages : [][]Token,
 }
 
 @(rodata)
-PATTERN_NK : [][]Token = {
-    // {.s},
-    {.e, .es},
-    {.e, .ee}
+PATTERN_XX : MessagePattern = {
+    pre_messages = nil,
+    messages = {
+        {.e},
+        {.e, .ee, .s, .es},
+        {.s, .se}
+    }
+}
+
+@(rodata)
+PATTERN_NK : MessagePattern = {
+    pre_messages = {.s},
+    messages = {
+        {.e, .es},
+        {.e, .ee},
+    }
 }
 
 
@@ -512,7 +521,7 @@ HandshakeState :: struct {
     rs: Maybe(ecdh.Public_Key),
     re: Maybe(ecdh.Public_Key),
     initiator: bool,
-    message_patterns: [][]Token,
+    message_patterns: MessagePattern,
     current_pattern: int,
 }
 
@@ -729,11 +738,13 @@ handshakestate_Initialize :: proc(
         return HandshakeState{}, status
     }
 
-    message_pattern : [][]Token
+    message_pattern : MessagePattern
     switch symmetricstate.cipherstate.protocol.handshake_pattern {
         case .XX: message_pattern = PATTERN_XX
         case .NK: message_pattern = PATTERN_NK
     }
+
+    // TODO: Fill out initialize function to handle pre-messages
 
     symmetricstate_MixHash(&symmetricstate, prologue)
 
@@ -780,7 +791,7 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
     fmt.println("WRITE MESSAGE")
 
     message_buffer := make([dynamic]u8)
-    pattern := self.message_patterns[self.current_pattern]
+    pattern := self.message_patterns.messages[self.current_pattern]
     self.current_pattern += 1;
     for token in pattern {
         fmt.println("token: ", token)
@@ -860,7 +871,7 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
         }
     }
     
-    if self.current_pattern == len(self.message_patterns) {
+    if self.current_pattern == len(self.message_patterns.messages) {
         c1, c2 := symmetricstate_Split(&self.symmetricstate)
         self.current_pattern = 0
         free_all(self.symmetricstate.allocator)
@@ -896,7 +907,7 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
     if len(message) < 32 {
         panic("Message len is too small to read from")
     }
-    pattern := self.message_patterns[self.current_pattern]
+    pattern := self.message_patterns.messages[self.current_pattern]
     self.current_pattern += 1
     message_cursor := 0
     for token in pattern {
@@ -983,7 +994,7 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
         symmetricstate_DecryptAndHash(&self.symmetricstate, rest_buffer)
     }
 
-    if self.current_pattern == len(self.message_patterns) {
+    if self.current_pattern == len(self.message_patterns.messages) {
         c1, c2 := symmetricstate_Split(&self.symmetricstate)
         self.current_pattern = 0
         free_all(self.symmetricstate.allocator)

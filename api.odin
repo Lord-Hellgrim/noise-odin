@@ -37,43 +37,53 @@ CipherStates :: struct {
     initiator: bool,
 }
 
-initiate_connection :: proc()
+Step :: union {
+    CipherStates,
+    []u8,
+}
 
-
-step_state :: proc(state: ^HandshakeState, message: []u8, payload: []u8 = {}) -> ([]u8, CipherStates, NoiseStatus) {
-    c1, c2: internals.CipherState
+initiator_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, payload : []u8 = nil, allocator := context.allocator) -> (Step, NoiseStatus) {
+    output_message : []u8
+    c1, c2 : internals.CipherState
     status : NoiseStatus
-    handshake_message : []u8
-    if state.initiator {
-        if state.current_pattern % 2 == 0 {
-            c1, c2, status = internals.handshakestate_read_message(state, message)
-        } else {
-            handshake_message, c1, c2, status = internals.handshakestate_write_message(state, payload)
-        }
+    if input_message == nil {
+        output_message, c1, c2, status = internals.handshakestate_write_message(handshakestate, payload, allocator = allocator)
     } else {
-        if state.current_pattern % 2 == 0 {
-            handshake_message, c1, c2, status = internals.handshakestate_write_message(state, payload)
-        } else {
-            c1, c2, status = internals.handshakestate_read_message(state, message)
+        _, _, status = internals.handshakestate_read_message(handshakestate, input_message)
+        assert(status == .Pending_Handshake)
+        output_message, c1, c2, status = internals.handshakestate_write_message(handshakestate, payload, allocator = allocator)
+    }
+
+    #partial switch status {
+        case .Pending_Handshake: {
+            return output_message, .Pending_Handshake
+        }
+        case .Handshake_Complete: {
+            return CipherStates{c1_i_to_r = c1, c2_r_to_i = c2, initiator = true}, .Handshake_Complete
         }
     }
 
-    cstates := CipherStates {
-        c1_i_to_r = c1,
-        c2_r_to_i = c2,
-        initiator = state.initiator
+    return nil, status
+}
+
+responder_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, payload : []u8 = nil, allocator := context.allocator) -> (Step, NoiseStatus) {
+    output_message : []u8
+    c1, c2, status := internals.handshakestate_read_message(handshakestate, input_message)
+    assert(status == .Pending_Handshake)
+    output_message, c1, c2, status = internals.handshakestate_write_message(handshakestate, payload, allocator = allocator)
+
+    #partial switch status {
+        case .Pending_Handshake: {
+            return output_message, .Pending_Handshake
+        }
+        case .Handshake_Complete: {
+            return CipherStates{c1_i_to_r = c1, c2_r_to_i = c2, initiator = false}, .Handshake_Complete
+        }
     }
 
-    return handshake_message, cstates, status
-     
+    return nil, status
 }
 
-ConnectionStatus :: enum {
-    pending,
-    complete,
-    error,
-    io_error,
-}
 
 KeyPair :: internals.KeyPair
 
