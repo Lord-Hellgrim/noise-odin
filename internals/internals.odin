@@ -35,6 +35,7 @@ NoiseStatus :: enum {
     Pending_Handshake,
     Handshake_Complete,
     invalid_address,
+    rs_not_set_for_s_pre_message,
     out_of_memory,
 }
 
@@ -745,6 +746,22 @@ handshakestate_Initialize :: proc(
     }
 
     // TODO: Fill out initialize function to handle pre-messages
+    if message_pattern.pre_messages != nil {
+        if initiator {
+            if message_pattern.pre_messages[0] == .s {
+                if rs == nil {
+                    return {}, .rs_not_set_for_s_pre_message
+                }
+            }
+        } else {
+            if len(message_pattern.pre_messages) == 2 {
+                assert(message_pattern.pre_messages[1] == .s)
+                if rs == nil {
+                    return {}, .rs_not_set_for_s_pre_message
+                }
+            }
+        }
+    }
 
     symmetricstate_MixHash(&symmetricstate, prologue)
 

@@ -37,12 +37,8 @@ CipherStates :: struct {
     initiator: bool,
 }
 
-Step :: union {
-    CipherStates,
-    []u8,
-}
 
-initiator_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, payload : []u8 = nil, allocator := context.allocator) -> (Step, NoiseStatus) {
+initiator_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, payload : []u8 = nil, allocator := context.allocator) -> (CipherStates, []u8, NoiseStatus) {
     output_message : []u8
     c1, c2 : internals.CipherState
     status : NoiseStatus
@@ -56,17 +52,17 @@ initiator_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, pay
 
     #partial switch status {
         case .Pending_Handshake: {
-            return output_message, .Pending_Handshake
+            return {}, output_message, .Pending_Handshake
         }
         case .Handshake_Complete: {
-            return CipherStates{c1_i_to_r = c1, c2_r_to_i = c2, initiator = true}, .Handshake_Complete
+            return CipherStates{c1_i_to_r = c1, c2_r_to_i = c2, initiator = true}, nil, .Handshake_Complete
         }
     }
 
-    return nil, status
+    return {}, nil, status
 }
 
-responder_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, payload : []u8 = nil, allocator := context.allocator) -> (Step, NoiseStatus) {
+responder_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, payload : []u8 = nil, allocator := context.allocator) -> (CipherStates, []u8, NoiseStatus) {
     output_message : []u8
     c1, c2, status := internals.handshakestate_read_message(handshakestate, input_message)
     assert(status == .Pending_Handshake)
@@ -74,14 +70,14 @@ responder_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, pay
 
     #partial switch status {
         case .Pending_Handshake: {
-            return output_message, .Pending_Handshake
+            return {}, output_message, .Pending_Handshake
         }
         case .Handshake_Complete: {
-            return CipherStates{c1_i_to_r = c1, c2_r_to_i = c2, initiator = false}, .Handshake_Complete
+            return CipherStates{c1_i_to_r = c1, c2_r_to_i = c2, initiator = false}, nil, .Handshake_Complete
         }
     }
 
-    return nil, status
+    return {}, nil, status
 }
 
 
