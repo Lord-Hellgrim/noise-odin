@@ -277,6 +277,7 @@ GENERATE_KEYPAIR :: proc(protocol: Protocol) -> KeyPair {
 DH :: proc(key_pair: ^KeyPair, their_public_key: ^ecdh.Public_Key, allocator: mem.Allocator) -> []u8 {
     fmt.println("My curve: ", key_pair.private._curve)
     fmt.println("Their curve: ", their_public_key._curve)
+
     dst := make([]u8, DhLen(key_pair.private._curve), )
     success := ecdh.ecdh(&key_pair.private, their_public_key, dst[:])
 
@@ -853,7 +854,7 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
 
             case .es: {
                 if self.initiator {
-                    dh := DH(&self.e.?, &self.rs.?,self.symmetricstate.allocator)
+                    dh := DH(&self.e.?, &self.rs.?, self.symmetricstate.allocator)
                     symmetricstate_MixKey(&self.symmetricstate, dh)
                 } else {
                     dh := DH(&self.s.?, &self.re.?, self.symmetricstate.allocator)

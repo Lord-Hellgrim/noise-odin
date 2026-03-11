@@ -44,22 +44,23 @@ initiator_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, pay
     status : NoiseStatus
     if input_message == nil {
         output_message, c1, c2, status = internals.handshakestate_write_message(handshakestate, payload, allocator = allocator)
+        fmt.println("Step status: ", status)
+        
     } else {
-        _, _, status = internals.handshakestate_read_message(handshakestate, input_message)
-        assert(status == .Pending_Handshake)
-        output_message, c1, c2, status = internals.handshakestate_write_message(handshakestate, payload, allocator = allocator)
-    }
-
-    #partial switch status {
-        case .Pending_Handshake: {
-            return {}, output_message, .Pending_Handshake
-        }
-        case .Handshake_Complete: {
-            return CipherStates{c1_i_to_r = c1, c2_r_to_i = c2, initiator = true}, nil, .Handshake_Complete
+        c1, c2, status = internals.handshakestate_read_message(handshakestate, input_message)
+        #partial switch status {
+            case .Pending_Handshake: {
+                output_message, c1, c2, status = internals.handshakestate_write_message(handshakestate, payload, allocator = allocator)
+                return {}, output_message, .Pending_Handshake
+            }
+            case .Handshake_Complete: {
+                return CipherStates{c1_i_to_r = c1, c2_r_to_i = c2, initiator = true}, nil, .Handshake_Complete
+            }
         }
     }
 
-    return {}, nil, status
+
+    return {}, output_message, status
 }
 
 responder_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, payload : []u8 = nil, allocator := context.allocator) -> (CipherStates, []u8, NoiseStatus) {
