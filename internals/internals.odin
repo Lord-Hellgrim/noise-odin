@@ -733,6 +733,9 @@ handshakestate_Initialize :: proc(
     protocol_name := DEFAULT_PROTOCOL_NAME
 ) -> (HandshakeState, NoiseStatus) {
 
+    rs := rs
+    re := re
+
     dynamic_arena := new(mem.Dynamic_Arena)
     mem.dynamic_arena_init(dynamic_arena)
     symmetricstate, status := symmetricstate_InitializeSymmetric(protocol_name, mem.dynamic_arena_allocator(dynamic_arena))
@@ -762,6 +765,9 @@ handshakestate_Initialize :: proc(
                 }
             }
         }
+    } else {
+        rs = nil
+        re = nil
     }
 
     symmetricstate_MixHash(&symmetricstate, prologue)

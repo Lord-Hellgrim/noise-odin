@@ -94,7 +94,6 @@ testing_matching_cipherstates_with_default_protocol :: proc(t: ^testing.T) {
 
 @(test)
 testing_api_basics :: proc(t: ^testing.T) {
-    
     protocol_name := "Noise_NK_25519_AESGCM_SHA256"
     protocol, parse_status := internals.parse_protocol_string(protocol_name)
     initiator_s := internals.GENERATE_KEYPAIR(protocol)
@@ -105,40 +104,45 @@ testing_api_basics :: proc(t: ^testing.T) {
         nil, 
         initiator_s, 
         nil, 
-        nil, 
-        nil, 
-        protocol_name = protocol_name
+        responder_s.public,
+        nil,
+        protocol_name = protocol_name,
     )
     responder_handshakestate, res_ini_status := internals.handshakestate_Initialize(
-        true,
+        false,
         nil,
         responder_s,
         nil,
-        initiator_s.public,
+        nil,
         nil,
         protocol_name = protocol_name
     )
-
+    fmt. println("ini_ini_status: ", ini_ini_status)
+    fmt. println("res_ini_status: ", res_ini_status)
     testing.expect(t, ini_ini_status == .Ok)
     testing.expect(t, res_ini_status == .Ok)
 
     ini_status, res_status : noise.NoiseStatus
     ini_cstates, res_cstates : noise.CipherStates
     ini_message, res_message : []u8
-    ini_complete := false
+    res_complete := false
+
     for {
-        ini_cstates, ini_message, ini_status = noise.initiator_step(&initiator_handshakestate, nil)
-        if ini_status == .Handshake_Complete {
-            ini_complete = true
+        ini_cstates, ini_message, ini_status = noise.initiator_step(&initiator_handshakestate, res_message)
+        if res_complete {
+            break
         }
         res_cstates, res_message, res_status = noise.responder_step(&responder_handshakestate, ini_message, nil)
         if res_status == .Handshake_Complete {
-            testing.expect(t, ini_complete == true)
-            break
+            res_complete = true
         }
     }
-
+    
     testing.expect(t, ini_cstates.c1_i_to_r == res_cstates.c1_i_to_r)
     testing.expect(t, ini_cstates.c2_r_to_i == res_cstates.c2_r_to_i)
 
+    internals.handshakestate_destroy(&initiator_handshakestate)
+    internals.handshakestate_destroy(&responder_handshakestate)
+
+    fmt.println("SUCCESS!!")
 }

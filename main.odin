@@ -13,8 +13,9 @@ import "internals"
 
 main :: proc() {
 
-    protocol_name := "Noise_NK_25519_AESGCM_SHA256"
-    protocol, parse_status := internals.parse_protocol_string(protocol_name)
+    protocol := internals.DEFAULT_PROTOCOL
+    protocol_name := internals.protocol_text_from_struct(protocol)
+    fmt.println(protocol_name)
     initiator_s := internals.GENERATE_KEYPAIR(protocol)
     responder_s := internals.GENERATE_KEYPAIR(protocol)
 
@@ -56,9 +57,12 @@ main :: proc() {
             res_complete = true
         }
     }
-
+    
     assert(ini_cstates.c1_i_to_r == res_cstates.c1_i_to_r)
     assert(ini_cstates.c2_r_to_i == res_cstates.c2_r_to_i)
+
+    internals.handshakestate_destroy(&initiator_handshakestate)
+    internals.handshakestate_destroy(&responder_handshakestate)
 
     fmt.println("SUCCESS!!")
 
