@@ -74,7 +74,7 @@ responder_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, pay
             return {}, output_message, .Pending_Handshake
         }
         case .Handshake_Complete: {
-            return CipherStates{c1_i_to_r = c1, c2_r_to_i = c2, initiator = false}, nil, .Handshake_Complete
+            return CipherStates{c1_i_to_r = c1, c2_r_to_i = c2, initiator = false}, output_message, .Handshake_Complete
         }
     }
 
