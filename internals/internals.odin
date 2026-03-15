@@ -37,6 +37,7 @@ NoiseStatus :: enum {
     invalid_address,
     rs_not_set_for_s_pre_message,
     out_of_memory,
+    nil_passed_to_read_message,
 }
 
 

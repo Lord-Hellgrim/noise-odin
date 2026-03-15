@@ -48,14 +48,14 @@ main :: proc() {
     res_complete := false
 
     for {
-        ini_cstates, ini_message, ini_status = initiator_step(&initiator_handshakestate, res_message)
-        if res_complete {
+        if ini_status == .Handshake_Complete && res_status == .Handshake_Complete {
             break
         }
-        res_cstates, res_message, res_status = responder_step(&responder_handshakestate, ini_message, nil)
-        if res_status == .Handshake_Complete {
-            res_complete = true
+        ini_cstates, res_message, ini_status = initiator_step(&initiator_handshakestate, ini_message, nil)
+        if ini_status == .Handshake_Complete && res_status == .Handshake_Complete {
+            break
         }
+        res_cstates, ini_message, res_status = responder_step(&responder_handshakestate, res_message, nil)
     }
     
     assert(ini_cstates.c1_i_to_r == res_cstates.c1_i_to_r)

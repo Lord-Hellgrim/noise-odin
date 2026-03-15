@@ -146,3 +146,64 @@ testing_api_basics :: proc(t: ^testing.T) {
 
     fmt.println("SUCCESS!!")
 }
+
+testing_random_protocols :: proc(t: ^testing.T) {
+    
+    for i in 0..<10_000 {
+
+        protocol := internals.random_protocol()
+        protocol_name := internals.protocol_text_from_struct(protocol)
+        fmt.println(protocol_name)
+        initiator_s := internals.GENERATE_KEYPAIR(protocol)
+        responder_s := internals.GENERATE_KEYPAIR(protocol)
+        ini_rs : Maybe(ecdh.Public_Key) = nil
+        res_rs : ecdh.Public_Key
+        if protocol.handshake_pattern == .NK {
+            ini_rs = responder_s.public
+        }
+        
+        initiator_handshakestate, ini_ini_status := internals.handshakestate_Initialize(
+            true,
+            nil, 
+            initiator_s, 
+            nil, 
+            ini_rs,
+            nil,
+            protocol_name = protocol_name,
+        )
+        responder_handshakestate, res_ini_status := internals.handshakestate_Initialize(
+            false,
+            nil,
+            responder_s,
+            nil,
+            nil,
+            nil,
+            protocol_name = protocol_name
+        )
+        testing.expect(t, ini_ini_status == .Ok)
+        testing.expect(t, res_ini_status == .Ok)
+        
+        ini_status, res_status : noise.NoiseStatus
+        ini_cstates, res_cstates : noise.CipherStates
+        ini_message, res_message : []u8
+        res_complete := false
+        
+        for {
+            if ini_status == .Handshake_Complete && res_status == .Handshake_Complete {
+                break
+            }
+            ini_cstates, res_message, ini_status = noise.initiator_step(&initiator_handshakestate, ini_message, nil)
+            if ini_status == .Handshake_Complete && res_status == .Handshake_Complete {
+                break
+            }
+            res_cstates, ini_message, res_status = noise.responder_step(&responder_handshakestate, res_message, nil)
+        }
+        
+        testing.expect(t, ini_cstates.c1_i_to_r == res_cstates.c1_i_to_r)
+        testing.expect(t, ini_cstates.c2_r_to_i == res_cstates.c2_r_to_i)
+        
+        internals.handshakestate_destroy(&initiator_handshakestate)
+        internals.handshakestate_destroy(&responder_handshakestate)
+    }
+
+}
