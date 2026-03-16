@@ -105,28 +105,10 @@ HandshakePattern :: enum u8 {
 }
 
 MessagePattern :: struct {
-    pre_messages : []Token,
+    pre_messages : []PreToken,
     messages : [][]Token,
 }
 
-@(rodata)
-PATTERN_XX : MessagePattern = {
-    pre_messages = nil,
-    messages = {
-        {.e},
-        {.e, .ee, .s, .es},
-        {.s, .se}
-    }
-}
-
-@(rodata)
-PATTERN_NK : MessagePattern = {
-    pre_messages = {.s},
-    messages = {
-        {.e, .es},
-        {.e, .ee},
-    }
-}
 
 
 Protocol :: struct {
@@ -494,6 +476,10 @@ HKDF :: proc(chaining_key: []u8, input_key_material: []u8, protocol: Protocol, a
     return output1, output2, output3
 } 
 
+PreToken :: enum {
+    res_s,
+    ini_s,
+}
 
 Token :: enum {
     e,
@@ -753,14 +739,13 @@ handshakestate_Initialize :: proc(
     // TODO: Fill out initialize function to handle pre-messages
     if message_pattern.pre_messages != nil {
         if initiator {
-            if message_pattern.pre_messages[0] == .s {
+            if slice.contains(message_pattern.pre_messages, PreToken.res_s) {
                 if rs == nil {
                     return {}, .rs_not_set_for_s_pre_message
                 }
             }
         } else {
-            if len(message_pattern.pre_messages) == 2 {
-                assert(message_pattern.pre_messages[1] == .s)
+            if slice.contains(message_pattern.pre_messages, PreToken.ini_s) {
                 if rs == nil {
                     return {}, .rs_not_set_for_s_pre_message
                 }

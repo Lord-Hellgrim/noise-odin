@@ -161,6 +161,8 @@ testing_random_protocols :: proc(t: ^testing.T) {
         if protocol.handshake_pattern == .NK {
             ini_rs = responder_s.public
         }
+
+        
         
         initiator_handshakestate, ini_ini_status := internals.handshakestate_Initialize(
             true,
