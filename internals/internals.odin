@@ -109,8 +109,6 @@ MessagePattern :: struct {
     messages : [][]Token,
 }
 
-
-
 Protocol :: struct {
     handshake_pattern: HandshakePattern,
     dh: ecdh.Curve,

@@ -1,6 +1,10 @@
 package internals
 
 
+// XX:
+//   -> e
+//   <- e, ee, s, es
+//   -> s, se
 @(rodata)
 PATTERN_XX : MessagePattern = {
     pre_messages = nil,
@@ -10,6 +14,11 @@ PATTERN_XX : MessagePattern = {
         {.s, .se}
     }
 }
+// NK:
+//   <- s
+//   ...
+//   -> e, es
+//   <- e, ee
 @(rodata)
 PATTERN_NK : MessagePattern = {
     pre_messages = {.res_s},
@@ -18,6 +27,9 @@ PATTERN_NK : MessagePattern = {
         {.e, .ee},
     }
 }
+// NN:
+//   -> e
+//   <- e, ee
 @(rodata)
 PATTERN_NN : MessagePattern = {
     pre_messages = nil,
@@ -25,6 +37,11 @@ PATTERN_NN : MessagePattern = {
         {.e, .ee},
     }
 }
+// KN:
+//   -> s
+//   ...
+//   -> e
+//   <- e, ee, se
 @(rodata)
 PATTERN_KN : MessagePattern = {
     pre_messages = {.ini_s},
@@ -33,6 +50,12 @@ PATTERN_KN : MessagePattern = {
         {.e, .ee, .se}
     }
 }
+// KK:
+//   -> s
+//   <- s
+//   ...
+//   -> e, es, ss
+//   <- e, ee, se
 @(rodata)
 PATTERN_KK : MessagePattern = {
     pre_messages = {.ini_s, .res_s},
@@ -41,6 +64,9 @@ PATTERN_KK : MessagePattern = {
         {.e, .ee, .se},
     }
 }
+// NX:
+//   -> e
+//   <- e, ee, s, es
 @(rodata)
 PATTERN_NX : MessagePattern = {
     pre_messages = nil,
@@ -49,6 +75,11 @@ PATTERN_NX : MessagePattern = {
         {.e, .ee, .s, .es},
     }
 }
+// KX:
+//   -> s
+//   ...
+//   -> e
+//   <- e, ee, se, s, es
 @(rodata)
 PATTERN_KX : MessagePattern = {
     pre_messages = {.ini_s},
@@ -57,6 +88,10 @@ PATTERN_KX : MessagePattern = {
         {.e, .ee, .se, .s, .es}
     }
 }
+// XN:
+//   -> e
+//   <- e, ee
+//   -> s, se
 @(rodata)
 PATTERN_XN : MessagePattern = {
     pre_messages = nil,
@@ -66,6 +101,9 @@ PATTERN_XN : MessagePattern = {
         {.s, .se},
     }
 }
+// IN:
+//   -> e, s
+//   <- e, ee, se
 @(rodata)
 PATTERN_IN : MessagePattern = {
     pre_messages = nil,
@@ -74,6 +112,12 @@ PATTERN_IN : MessagePattern = {
         {.e, .ee, .se},
     }
 }
+// XK:
+//   <- s
+//   ...
+//   -> e, es
+//   <- e, ee
+//   -> s, se
 @(rodata)
 PATTERN_XK : MessagePattern = {
     pre_messages = {.res_s},
@@ -83,6 +127,11 @@ PATTERN_XK : MessagePattern = {
         {.s, .se},
     }
 }
+// IK:
+//   <- s
+//   ...
+//   -> e, es, s, ss
+//   <- e, ee, se
 @(rodata)
 PATTERN_IK : MessagePattern = {
     pre_messages = {.res_s}, 
@@ -91,6 +140,9 @@ PATTERN_IK : MessagePattern = {
         {.e, .ee, .se}
     }
 }
+// IX:
+//   -> e, s
+//   <- e, ee, se, s, es
 @(rodata)
 PATTERN_IX :  MessagePattern = {
     pre_messages = nil,
