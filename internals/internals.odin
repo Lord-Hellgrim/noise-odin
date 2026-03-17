@@ -100,8 +100,23 @@ MAX_BLOCKLEN :: 128
 
 // Supported handshake patterns will be listed here.
 HandshakePattern :: enum u8 {
+    // One way patterns
+    // N,
+    // K,
+    // X,
+    // Fundamental patterns
     XX,
-    NK
+    NK,
+    NN,
+    KN,
+    KK,
+    NX,
+    KX,
+    XN,
+    IN,
+    XK,
+    IK,
+    IX,
 }
 
 MessagePattern :: struct {
@@ -163,6 +178,16 @@ parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus
     switch protocol_string[underline[0]+1 : underline[1]] {
         case "XX": protocol.handshake_pattern = .XX
         case "NK": protocol.handshake_pattern = .NK
+        case "NN": protocol.handshake_pattern = .NN
+        case "KN": protocol.handshake_pattern = .KN
+        case "KK": protocol.handshake_pattern = .KK
+        case "NX": protocol.handshake_pattern = .NX
+        case "KX": protocol.handshake_pattern = .KX
+        case "XN": protocol.handshake_pattern = .XN
+        case "IN": protocol.handshake_pattern = .IN
+        case "XK": protocol.handshake_pattern = .XK
+        case "IK": protocol.handshake_pattern = .IK
+        case "IX": protocol.handshake_pattern = .IX
         case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
@@ -188,6 +213,25 @@ parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus
 
     return protocol, .Ok
 
+}
+
+map_pattern :: proc(p: HandshakePattern) -> MessagePattern {
+    message_pattern : MessagePattern
+    switch p {
+            case .XX: message_pattern = PATTERN_XX
+            case .NK: message_pattern = PATTERN_NK
+            case .NN: message_pattern = PATTERN_NN
+            case .KN: message_pattern = PATTERN_KN
+            case .KK: message_pattern = PATTERN_KK
+            case .NX: message_pattern = PATTERN_NX
+            case .KX: message_pattern = PATTERN_KX
+            case .XN: message_pattern = PATTERN_XN
+            case .IN: message_pattern = PATTERN_IN
+            case .XK: message_pattern = PATTERN_XK
+            case .IK: message_pattern = PATTERN_IK
+            case .IX: message_pattern = PATTERN_IX
+        }
+    return message_pattern
 }
 
 dhtype_to_curve :: proc(dh: DhType) -> ecdh.Curve {
@@ -728,11 +772,7 @@ handshakestate_Initialize :: proc(
         return HandshakeState{}, status
     }
 
-    message_pattern : MessagePattern
-    switch symmetricstate.cipherstate.protocol.handshake_pattern {
-        case .XX: message_pattern = PATTERN_XX
-        case .NK: message_pattern = PATTERN_NK
-    }
+    message_pattern := map_pattern(symmetricstate.cipherstate.protocol.handshake_pattern)
 
     // TODO: Fill out initialize function to handle pre-messages
     if message_pattern.pre_messages != nil {
@@ -815,6 +855,7 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
                         ecdh.public_key_bytes(&e.public, dst)
                     }
                 }
+                assert(len(dst) == DhLen(get_curve(self)))
                 elems_added, append_error := append(&message_buffer, ..dst)
                 if append_error == .Out_Of_Memory {
                     fmt.eprintln("OOM")
@@ -948,8 +989,14 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
                 rs := make([]u8, rs_size, self.symmetricstate.allocator)
                 copy(rs[:], message[message_cursor : message_cursor + rs_size])
                 message_cursor += rs_size
-                rs_buffer := cryptobuffer_from_slice(rs)
-                temp, temp_err := symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
+                temp : []u8
+                if cipherstate_HasKey(&self.symmetricstate.cipherstate) {
+                    rs_buffer := cryptobuffer_from_slice(rs)
+                    temp, _ = symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
+                } else {
+                    rs_buffer := CryptoBuffer{main_body = rs[:], tag = 0}
+                    temp, _ = symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
+                }
                 switch &self_rs in self.rs {
                     case nil: {
                         temp2 : ecdh.Public_Key
@@ -1024,7 +1071,7 @@ unwrap :: proc(m: Maybe($T)) -> ^T {
         case T: {
             return &x
         }
-        case nil: panic("Unwrap calle don nil value")
+        case nil: panic("Unwrap called on nil value")
     }
     return nil
 }
@@ -1096,19 +1143,6 @@ array_xor :: proc(a: []u8, b: []u8, allocator: mem.Allocator) -> []u8 {
     }
     return c
 }
-
-// array_xor :: proc(a: [BLOCKLEN]u8, b: [BLOCKLEN]u8) -> [BLOCKLEN]u8 {
-//     a := a
-//     b := b
-//     output: [BLOCKLEN]u8
-//     for i in 0..<8 {
-//         blocka : simd.u8x16 = simd.from_slice(simd.u8x16, a[i*16:i*16+16]);
-//         blockb : simd.u8x16 = simd.from_slice(simd.u8x16, b[i*16:i*16+16]);
-//         temp := simd.to_array(blocka ~ blockb)
-//         copy(output[i*16 : i*16+16], temp[:])
-//     }
-//     return output
-// }
 
 zeropad128 :: proc(input: []u8) -> [128]u8 {
     assert(len(input) <= 128)
