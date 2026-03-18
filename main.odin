@@ -14,7 +14,7 @@ import "internals"
 main :: proc() {
     // protocol := internals.random_protocol()
     // protocol_name := internals.protocol_text_from_struct(protocol)
-    protocol_name := "Noise_IN_25519_AESGCM_Blake2s"
+    protocol_name := "Noise_NN_448_AESGCM_SHA256"
     protocol, parse_error := parse_protocol_string(protocol_name)
     fmt.println(protocol_name)
     initiator_s := internals.GENERATE_KEYPAIR(protocol)
@@ -22,10 +22,12 @@ main :: proc() {
     ini_rs : Maybe(ecdh.Public_Key) = nil
     res_rs : ecdh.Public_Key
     pattern := internals.map_pattern(protocol.handshake_pattern)
+    fmt.println(pattern)
     if slice.contains(pattern.pre_messages, internals.PreToken.res_s) {
         ini_rs = responder_s.public
     }
     if slice.contains(pattern.pre_messages, internals.PreToken.ini_s){
+        fmt.println("here")
         res_rs = initiator_s.public
     }
 
@@ -43,7 +45,7 @@ main :: proc() {
         nil,
         responder_s,
         nil,
-        nil,
+        res_rs,
         nil,
         protocol_name = protocol_name
     )

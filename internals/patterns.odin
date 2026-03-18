@@ -35,6 +35,7 @@ PATTERN_NK : MessagePattern = {
 PATTERN_NN : MessagePattern = {
     pre_messages = nil,
     messages = {
+        {.e},
         {.e, .ee},
     }
 }
