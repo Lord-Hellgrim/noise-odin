@@ -57,6 +57,10 @@ HashType :: enum u8 {
     Blake2b,
 }
 
+MAX_DHLEN :: 56
+MAX_HASHLEN :: 64
+MAX_BLOCKLEN :: 128
+
 DhLen :: proc(dh: ecdh.Curve) -> int {
     #partial switch dh {
         case .X25519: return 32
@@ -92,11 +96,6 @@ IPAD : [MAX_BLOCKLEN]u8 = {0..<MAX_BLOCKLEN = 0x36}
 OPAD : [MAX_BLOCKLEN]u8 = {0..<MAX_BLOCKLEN = 0x5c} 
 
 
-MAX_DHLEN :: 56
-MAX_HASHLEN :: 64
-MAX_BLOCKLEN :: 128
-
-
 // Supported handshake patterns will be listed here.
 HandshakePattern :: enum u8 {
     // One way patterns
@@ -126,8 +125,8 @@ MessagePattern :: struct {
 Protocol :: struct {
     handshake_pattern: HandshakePattern,
     dh: ecdh.Curve,
-    cipher: CipherType,
-    hash: HashType,
+    cipher: aead.Algorithm,
+    hash: hash.Algorithm,
 }
 
 DEFAULT_PROTOCOL_NAME :: "Noise_XX_25519_AESGCM_SHA256";
@@ -135,7 +134,7 @@ DEFAULT_PROTOCOL_NAME :: "Noise_XX_25519_AESGCM_SHA256";
 DEFAULT_PROTOCOL :: Protocol {
     handshake_pattern = .XX,
     dh = .X25519,
-    cipher = .AES256gcm,
+    cipher = .AES_GCM_256,
     hash = .SHA256
 }
 
@@ -146,12 +145,8 @@ ERROR_PROTOCOL :: Protocol {
     hash = nil
 }
 
-Result :: union($T: typeid) {
-    T,
-    NoiseStatus
-}
 
-parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus) {
+parse_protocol_string :: proc "contextless" (protocol_string: string) -> (Protocol, NoiseStatus) {
     // Default protocol string "Noise_XX_25519_AESGCM_SHA512"
 
     if len(protocol_string) > 255 {
@@ -197,16 +192,16 @@ parse_protocol_string :: proc(protocol_string: string) -> (Protocol, NoiseStatus
     }
 
     switch protocol_string[underline[2]+1 : underline[3]] {
-        case "AESGCM": protocol.cipher = .AES256gcm
-        case "ChaChaPoly": protocol.cipher = .ChaChaPoly
+        case "AESGCM": protocol.cipher = .AES_GCM_256
+        case "ChaChaPoly": protocol.cipher = .CHACHA20POLY1305
         case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
     switch protocol_string[underline[3]+1 : ] {
         case "SHA512": protocol.hash = .SHA512
         case "SHA256": protocol.hash = .SHA256
-        case "Blake2s": protocol.hash = .Blake2s
-        case "Blake2b": protocol.hash = .Blake2b
+        case "Blake2s": protocol.hash = .BLAKE2S
+        case "Blake2b": protocol.hash = .BLAKE2B
         case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
@@ -243,8 +238,8 @@ dhtype_to_curve :: proc(dh: DhType) -> ecdh.Curve {
 }
 
 random_protocol :: proc() -> Protocol {
-    cipher  := CipherType(rand.int_range(0, len(CipherType)))
-    dh      := DhType(rand.int_range(0, len(DhType)))
+    cipher  := aead.Algorithm(rand.int_range(0, len(aead.Algorithm)))
+    dh      := ecdh.Curve(rand.int_range(0, len(ecdh.Curve)))
     hash    := HashType(rand.int_range(0, len(HashType)))
     HandP   := HandshakePattern(rand.int_range(0, len(HandshakePattern)))
     return Protocol {
