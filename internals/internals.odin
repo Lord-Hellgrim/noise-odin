@@ -20,7 +20,6 @@ import "core:fmt"
 import "core:net"
 
 
-
 /// A constant specifying the size in bytes that the hash function uses internally to divide its input for iterative processing. 
 /// This is needed to use the hash function with HMAC (BLOCKLEN is B in [3]).
 
