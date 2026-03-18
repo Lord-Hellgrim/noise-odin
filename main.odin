@@ -12,22 +12,22 @@ import "internals"
 
 
 main :: proc() {
-    // protocol := internals.random_protocol()
-    // protocol_name := internals.protocol_text_from_struct(protocol)
-    protocol_name := "Noise_NN_448_AESGCM_SHA256"
-    protocol, parse_error := parse_protocol_string(protocol_name)
+    protocol := internals.random_protocol()
+    protocol_name := internals.protocol_text_from_struct(protocol)
+    // protocol_name := "Noise_IX_448_AESGCM_SHA256"
+    // protocol, parse_error := parse_protocol_string(protocol_name)
     fmt.println(protocol_name)
     initiator_s := internals.GENERATE_KEYPAIR(protocol)
     responder_s := internals.GENERATE_KEYPAIR(protocol)
     ini_rs : Maybe(ecdh.Public_Key) = nil
-    res_rs : ecdh.Public_Key
+    res_rs : Maybe(ecdh.Public_Key) = nil
     pattern := internals.map_pattern(protocol.handshake_pattern)
     fmt.println(pattern)
     if slice.contains(pattern.pre_messages, internals.PreToken.res_s) {
+        fmt.println("here")
         ini_rs = responder_s.public
     }
     if slice.contains(pattern.pre_messages, internals.PreToken.ini_s){
-        fmt.println("here")
         res_rs = initiator_s.public
     }
 
