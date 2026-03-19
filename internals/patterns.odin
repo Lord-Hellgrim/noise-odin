@@ -1,5 +1,50 @@
 package internals
 
+
+// ------------- ONE WAY PATTERNS ---------------------------------------------------------
+
+// N:
+//   <- s
+//   ...
+//   -> e, es
+@(rodata)
+PATTERN_N : MessagePattern = {
+    pre_messages = {.res_s},
+    messages = {
+        {.e, .es}
+    }
+}
+// K:
+//   -> s
+//   <- s
+//   ...
+//   -> e, es, ss
+@(rodata)
+PATTERN_K : MessagePattern = {
+    pre_messages = {
+        .ini_s,
+        .res_s,
+    },
+    messages = {
+        {.e, .es, .ss}
+    }
+}
+// X:
+//   <- s
+//   ...
+//   -> e, es, s, ss
+@(rodata)
+PATTERN_X : MessagePattern = {
+    pre_messages = {
+        .res_s
+    },
+    messages = {
+        {.e, .es, .s, .ss}
+    }
+}
+
+// ----------------------------------------------------------------------------------------
+
 // ------------- FUNDAMENTAL PATTERNS -----------------------------------------------------
 
 // XX:

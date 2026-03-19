@@ -99,9 +99,9 @@ OPAD : [MAX_BLOCKLEN]u8 = {0..<MAX_BLOCKLEN = 0x5c}
 // Supported handshake patterns will be listed here.
 HandshakePattern :: enum u8 {
     // One way patterns
-    // N,
-    // K,
-    // X,
+    N,
+    K,
+    X,
     // Fundamental patterns
     XX,
     NK,
@@ -168,6 +168,9 @@ parse_protocol_string :: proc "contextless" (protocol_string: string) -> (Protoc
     }
 
     switch protocol_string[underline[0]+1 : underline[1]] {
+        case "N" : protocol.handshake_pattern = .N
+        case "K" : protocol.handshake_pattern = .K
+        case "X" : protocol.handshake_pattern = .X
         case "XX": protocol.handshake_pattern = .XX
         case "NK": protocol.handshake_pattern = .NK
         case "NN": protocol.handshake_pattern = .NN
@@ -209,18 +212,21 @@ parse_protocol_string :: proc "contextless" (protocol_string: string) -> (Protoc
 map_pattern :: proc(p: HandshakePattern) -> MessagePattern {
     message_pattern : MessagePattern
     switch p {
-            case .XX: message_pattern = PATTERN_XX
-            case .NK: message_pattern = PATTERN_NK
-            case .NN: message_pattern = PATTERN_NN
-            case .KN: message_pattern = PATTERN_KN
-            case .KK: message_pattern = PATTERN_KK
-            case .NX: message_pattern = PATTERN_NX
-            case .KX: message_pattern = PATTERN_KX
-            case .XN: message_pattern = PATTERN_XN
-            case .IN: message_pattern = PATTERN_IN
-            case .XK: message_pattern = PATTERN_XK
-            case .IK: message_pattern = PATTERN_IK
-            case .IX: message_pattern = PATTERN_IX
+        case .N : message_pattern = PATTERN_N
+        case .K : message_pattern = PATTERN_K
+        case .X : message_pattern = PATTERN_X
+        case .XX: message_pattern = PATTERN_XX
+        case .NK: message_pattern = PATTERN_NK
+        case .NN: message_pattern = PATTERN_NN
+        case .KN: message_pattern = PATTERN_KN
+        case .KK: message_pattern = PATTERN_KK
+        case .NX: message_pattern = PATTERN_NX
+        case .KX: message_pattern = PATTERN_KX
+        case .XN: message_pattern = PATTERN_XN
+        case .IN: message_pattern = PATTERN_IN
+        case .XK: message_pattern = PATTERN_XK
+        case .IK: message_pattern = PATTERN_IK
+        case .IX: message_pattern = PATTERN_IX
         }
     return message_pattern
 }
