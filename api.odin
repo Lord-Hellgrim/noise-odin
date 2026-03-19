@@ -15,6 +15,8 @@ keypair_random :: internals.keypair_random
 
 parse_protocol_string :: internals.parse_protocol_string
 
+CryptoBuffer :: internals.CryptoBuffer
+
 // levels of abstraction
 // level 1 -> 
 //      send_data(data, address)
@@ -67,7 +69,30 @@ responder_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, pay
     }
 
     return CipherStates{c1_i_to_r = c1, c2_r_to_i = c2, initiator = false}, output_message, status
-    
+}
+
+// This function will overwrite the message slice
+initiator_prepare_message :: proc(cstates: ^CipherStates, message: []u8) -> CryptoBuffer {
+    cryptobuffer := internals.cipherstate_EncryptWithAd(&cstates.c1_i_to_r, nil, message)
+    return cryptobuffer
+}
+
+// This function will overwrite the encrypted message slice
+responder_open_message :: proc(cstates: ^CipherStates, encrypted_message: ^[]u8) -> ([]u8, NoiseStatus) {
+    cryptobuffer := internals.cryptobuffer_from_slice(encrypted_message^)
+    return internals.cipherstate_DecryptWithAd(&cstates.c1_i_to_r, nil, cryptobuffer)
+}
+
+// This function will overwrite the message slice
+responder_prepare_message :: proc(cstates: ^CipherStates, message: []u8) -> CryptoBuffer {
+    cryptobuffer := internals.cipherstate_EncryptWithAd(&cstates.c2_r_to_i, nil, message)
+    return cryptobuffer
+}
+
+// This function will overwrite the encrypted message slice
+initiator_open_message :: proc(cstates: ^CipherStates, encrypted_message: ^[]u8) -> ([]u8, NoiseStatus) {
+    cryptobuffer := internals.cryptobuffer_from_slice(encrypted_message^)
+    return internals.cipherstate_DecryptWithAd(&cstates.c2_r_to_i, nil, cryptobuffer)
 }
 
 
