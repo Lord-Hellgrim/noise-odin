@@ -475,6 +475,19 @@ Token :: enum {
     es,
     se,
     ss,
+    psk,
+}
+
+is_psk_pattern :: proc(pattern: MessagePattern) -> bool {
+    for p in pattern.messages {
+        for m in p {
+            if m == .psk {
+                return true
+            }
+        }
+    }
+
+    return false
 }
 
 CipherState :: struct {
@@ -499,6 +512,7 @@ HandshakeState :: struct {
     initiator: bool,
     message_patterns: MessagePattern,
     current_pattern: int,
+    psk: [32]u8,
 }
 
 get_curve :: proc(handshake_state: ^HandshakeState) -> ecdh.Curve {
@@ -823,24 +837,27 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
         switch token {
             case .e: {
                 self.e = GENERATE_KEYPAIR(self.symmetricstate.cipherstate.protocol)
-                dst, allocerror := make([]u8, DhLen(get_curve(self)), self.symmetricstate.allocator)
+                e_public, allocerror := make([]u8, DhLen(get_curve(self)), self.symmetricstate.allocator)
                 if allocerror == .Out_Of_Memory {
                     fmt.eprintln("OOM")
                     return {}, {},{}, .out_of_memory
                 }
                 switch &e in self.e {
                     case KeyPair: {
-                        ecdh.public_key_bytes(&e.public, dst)
+                        ecdh.public_key_bytes(&e.public, e_public)
                     }
                     case nil: panic("There must be a bug in the compiler. e is set a few lines before this check")
                 }
-                assert(len(dst) == DhLen(get_curve(self)))
-                elems_added, append_error := append(&message_buffer, ..dst)
+                assert(len(e_public) == DhLen(get_curve(self)))
+                elems_added, append_error := append(&message_buffer, ..e_public)
                 if append_error == .Out_Of_Memory {
                     fmt.eprintln("OOM")
                     return {}, {},{}, .out_of_memory
                 }
-                symmetricstate_MixHash(&self.symmetricstate, dst)
+                symmetricstate_MixHash(&self.symmetricstate, e_public)
+                if is_psk_pattern(self.message_patterns) {
+                    symmetricstate_MixKey(&self.symmetricstate, e_public)
+                }
             }
             case .s: {
                 
@@ -886,6 +903,9 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
             case .ss: {
                 dh := DH(&self.s.?, &self.rs.?, self.symmetricstate.allocator)
                 symmetricstate_MixKey(&self.symmetricstate, dh)
+            }
+            case .psk: {
+                symmetricstate_MixKeyAndHash(&self.symmetricstate, self.psk[:])
             }
         };
     }
@@ -957,6 +977,12 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
                         panic("Implementation error: re was not empty when processing token 'e' during read_message")
                     }
                 }
+                e_public := make([]u8, 32)
+                switch &x in self.e {
+                    case KeyPair    : ecdh.public_key_bytes(&x.public, e_public)
+                    case nil        : panic("Implementation error. self.e is empty after processing token .e")
+                }
+                symmetricstate_MixKey(&self.symmetricstate, e_public)
             }
             case .s: {
                 rs_size : int
@@ -1017,6 +1043,10 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
             case .ss: {
                 dh := DH(&self.s.?, &self.rs.?, self.symmetricstate.allocator)
                 symmetricstate_MixKey(&self.symmetricstate, dh)
+            }
+
+            case .psk: {
+                symmetricstate_MixKeyAndHash(&self.symmetricstate, self.psk[:])
             }
         };
     }
