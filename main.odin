@@ -14,7 +14,7 @@ import "internals"
 main :: proc() {
     // protocol := internals.random_protocol()
     // protocol_name := internals.protocol_text_from_struct(protocol)
-    protocol_name := "Noise_N_448_AESGCM_SHA256"
+    protocol_name := "Noise_X_448_AESGCM_SHA256"
     protocol, parse_error := parse_protocol_string(protocol_name)
     fmt.println(protocol_name)
     initiator_s := internals.GENERATE_KEYPAIR(protocol)
