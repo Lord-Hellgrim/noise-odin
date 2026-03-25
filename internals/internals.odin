@@ -115,6 +115,25 @@ HandshakePattern :: enum u8 {
     XK,
     IK,
     IX,
+    // psk patterns
+    NNpsk0,
+    NNpsk2,
+    NKpsk0,
+    NKpsk2,
+    NXpsk2,
+    XNpsk3,
+    XKpsk3,
+    XXpsk3,
+    KNpsk0,
+    KNpsk2,
+    KKpsk0,
+    KKpsk2,
+    KXpsk2,
+    INpsk1,
+    INpsk2,
+    IKpsk1,
+    IKpsk2,
+    IXpsk2,
 }
 
 MessagePattern :: struct {
@@ -183,6 +202,24 @@ parse_protocol_string :: proc "contextless" (protocol_string: string) -> (Protoc
         case "XK": protocol.handshake_pattern = .XK
         case "IK": protocol.handshake_pattern = .IK
         case "IX": protocol.handshake_pattern = .IX
+        case "NNpsk0": protocol.handshake_pattern = .NNpsk0
+        case "NNpsk2": protocol.handshake_pattern = .NNpsk2
+        case "NKpsk0": protocol.handshake_pattern = .NKpsk0
+        case "NKpsk2": protocol.handshake_pattern = .NKpsk2
+        case "NXpsk2": protocol.handshake_pattern = .NXpsk2
+        case "XNpsk3": protocol.handshake_pattern = .XNpsk3
+        case "XKpsk3": protocol.handshake_pattern = .XKpsk3
+        case "XXpsk3": protocol.handshake_pattern = .XXpsk3
+        case "KNpsk0": protocol.handshake_pattern = .KNpsk0
+        case "KNpsk2": protocol.handshake_pattern = .KNpsk2
+        case "KKpsk0": protocol.handshake_pattern = .KKpsk0
+        case "KKpsk2": protocol.handshake_pattern = .KKpsk2
+        case "KXpsk2": protocol.handshake_pattern = .KXpsk2
+        case "INpsk1": protocol.handshake_pattern = .INpsk1
+        case "INpsk2": protocol.handshake_pattern = .INpsk2
+        case "IKpsk1": protocol.handshake_pattern = .IKpsk1
+        case "IKpsk2": protocol.handshake_pattern = .IKpsk2
+        case "IXpsk2": protocol.handshake_pattern = .IXpsk2
         case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
     }
 
@@ -227,6 +264,24 @@ map_pattern :: proc(p: HandshakePattern) -> MessagePattern {
         case .XK: message_pattern = PATTERN_XK
         case .IK: message_pattern = PATTERN_IK
         case .IX: message_pattern = PATTERN_IX
+        case .NNpsk0: message_pattern = PATTERN_NNpsk0
+        case .NNpsk2: message_pattern = PATTERN_NNpsk2
+        case .NKpsk0: message_pattern = PATTERN_NKpsk0
+        case .NKpsk2: message_pattern = PATTERN_NKpsk2
+        case .NXpsk2: message_pattern = PATTERN_NXpsk2
+        case .XNpsk3: message_pattern = PATTERN_XNpsk3
+        case .XKpsk3: message_pattern = PATTERN_XKpsk3
+        case .XXpsk3: message_pattern = PATTERN_XXpsk3
+        case .KNpsk0: message_pattern = PATTERN_KNpsk0
+        case .KNpsk2: message_pattern = PATTERN_KNpsk2
+        case .KKpsk0: message_pattern = PATTERN_KKpsk0
+        case .KKpsk2: message_pattern = PATTERN_KKpsk2
+        case .KXpsk2: message_pattern = PATTERN_KXpsk2
+        case .INpsk1: message_pattern = PATTERN_INpsk1
+        case .INpsk2: message_pattern = PATTERN_INpsk2
+        case .IKpsk1: message_pattern = PATTERN_IKpsk1
+        case .IKpsk2: message_pattern = PATTERN_IKpsk2
+        case .IXpsk2: message_pattern = PATTERN_IXpsk2
         }
     return message_pattern
 }
