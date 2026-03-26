@@ -744,6 +744,7 @@ symmetricstate_Split :: proc(self: ^SymmetricState) -> (CipherState, CipherState
 }
 
 
+
 /// : Takes a valid handshake_pattern (see Section 7) and an initiator boolean specifying this party's role as either initiator or responder.
 
 /// Takes a prologue byte sequence which may be zero-length, or which may contain context information that both parties want to confirm is identical 
@@ -775,7 +776,8 @@ handshakestate_Initialize :: proc(
     e: Maybe(KeyPair),
     rs: Maybe(ecdh.Public_Key),
     re: Maybe(ecdh.Public_Key),
-    protocol_name := DEFAULT_PROTOCOL_NAME
+    protocol_name := DEFAULT_PROTOCOL_NAME,
+    psk : [32]u8 = 0,
 ) -> (HandshakeState, NoiseStatus) {
 
     rs := rs
@@ -1032,12 +1034,9 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
                         panic("Implementation error: re was not empty when processing token 'e' during read_message")
                     }
                 }
-                e_public := make([]u8, 32)
-                switch &x in self.e {
-                    case KeyPair    : ecdh.public_key_bytes(&x.public, e_public)
-                    case nil        : panic("Implementation error. self.e is empty after processing token .e")
+                if is_psk_pattern(self.message_patterns) {
+                    symmetricstate_MixKey(&self.symmetricstate, re)
                 }
-                symmetricstate_MixKey(&self.symmetricstate, e_public)
             }
             case .s: {
                 rs_size : int
@@ -1138,6 +1137,12 @@ unwrap :: proc(m: Maybe($T)) -> ^T {
         case nil: panic("Unwrap called on nil value")
     }
     return nil
+}
+
+random_psk :: proc() -> [32]u8 {
+    psk : [32]u8
+    crypto.rand_bytes(psk[:])
+    return psk
 }
 
 

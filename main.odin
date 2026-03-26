@@ -12,10 +12,10 @@ import "internals"
 
 
 main :: proc() {
-    // protocol := internals.random_protocol()
-    // protocol_name := internals.protocol_text_from_struct(protocol)
-    protocol_name := "Noise_X_448_AESGCM_SHA256"
-    protocol, parse_error := parse_protocol_string(protocol_name)
+    protocol := internals.random_protocol()
+    protocol_name := internals.protocol_text_from_struct(protocol)
+    // protocol_name := "Noise_XX_448_AESGCM_SHA256"
+    // protocol, parse_error := parse_protocol_string(protocol_name)
     fmt.println(protocol_name)
     initiator_s := internals.GENERATE_KEYPAIR(protocol)
     responder_s := internals.GENERATE_KEYPAIR(protocol)
@@ -31,6 +31,11 @@ main :: proc() {
         res_rs = initiator_s.public
     }
 
+    psk: [32]u8
+    if internals.is_psk_pattern(pattern) {
+        psk = internals.random_psk()
+    }
+
     initiator_handshakestate, ini_ini_status := internals.handshakestate_Initialize(
         true,
         nil, 
@@ -39,6 +44,7 @@ main :: proc() {
         ini_rs,
         nil,
         protocol_name = protocol_name,
+        psk = psk,
     )
     responder_handshakestate, res_ini_status := internals.handshakestate_Initialize(
         false,
@@ -47,7 +53,8 @@ main :: proc() {
         nil,
         res_rs,
         nil,
-        protocol_name = protocol_name
+        protocol_name = protocol_name,
+        psk = psk,
     )
     fmt.println("ini_ini_status: ", ini_ini_status)
     fmt.println("res_ini_status: ", res_ini_status)
