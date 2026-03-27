@@ -7,6 +7,8 @@ import "core:slice"
 import "core:time"
 import "core:os"
 import "core:crypto/ecdh"
+import "core:crypto"
+import "core:math/rand"
 
 import "internals"
 
@@ -79,6 +81,15 @@ main :: proc() {
     
     assert(ini_cstates.c1_i_to_r == res_cstates.c1_i_to_r)
     assert(ini_cstates.c2_r_to_i == res_cstates.c2_r_to_i)
+
+    og_test_data : [10]u8 = {1,2,3,4,5,6,7,8,9,10}
+    backup_og := og_test_data
+    fmt.println(og_test_data)
+    prepared_test_data := prepare_message(&ini_cstates, og_test_data[:])
+    decrypted_test_data, decrypt_status := open_message(&res_cstates, prepared_test_data)
+
+
+    fmt.println(decrypted_test_data)
     
     internals.handshakestate_destroy(&initiator_handshakestate)
     internals.handshakestate_destroy(&responder_handshakestate)

@@ -1,5 +1,6 @@
 package test
 
+import "core:math/rand"
 
 import "core:testing"
 import "core:os"
@@ -190,8 +191,8 @@ testing_random_protocols :: proc(t: ^testing.T) {
         )
         fmt.println("ini_ini_status: ", ini_ini_status)
         fmt.println("res_ini_status: ", res_ini_status)
-        assert(ini_ini_status == .Ok)
-        assert(res_ini_status == .Ok)
+        testing.expect(t, ini_ini_status == .Ok)
+        testing.expect(t, res_ini_status == .Ok)
         
         ini_status, res_status : noise.NoiseStatus
         ini_cstates, res_cstates : noise.CipherStates
@@ -209,8 +210,19 @@ testing_random_protocols :: proc(t: ^testing.T) {
             res_cstates, ini_message, res_status = noise.responder_step(&responder_handshakestate, res_message, nil)
         }
         
-        assert(ini_cstates.c1_i_to_r == res_cstates.c1_i_to_r)
-        assert(ini_cstates.c2_r_to_i == res_cstates.c2_r_to_i)
+        testing.expect(t, ini_cstates.c1_i_to_r == res_cstates.c1_i_to_r)
+        testing.expect(t, ini_cstates.c2_r_to_i == res_cstates.c2_r_to_i)
+        
+        og_test_data := make([]u8, rand.int_range(128, 1_000_000))
+        defer delete(og_test_data)
+        crypto.rand_bytes(og_test_data[:])
+        backup_og := slice.clone(og_test_data)
+        defer delete(backup_og)
+
+        prepared_test_data := noise.prepare_message(&ini_cstates, og_test_data[:])
+        decrypted_test_data, decrypt_status := noise.open_message(&res_cstates, prepared_test_data)
+
+        testing.expect(t, slice.equal(backup_og[:], decrypted_test_data))
         
         internals.handshakestate_destroy(&initiator_handshakestate)
         internals.handshakestate_destroy(&responder_handshakestate)

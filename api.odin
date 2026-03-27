@@ -71,30 +71,34 @@ responder_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, pay
     return CipherStates{c1_i_to_r = c1, c2_r_to_i = c2, initiator = false}, output_message, status
 }
 
-// This function will overwrite the message slice
-initiator_prepare_message :: proc(cstates: ^CipherStates, message: []u8) -> CryptoBuffer {
-    cryptobuffer := internals.cipherstate_EncryptWithAd(&cstates.c1_i_to_r, nil, message)
-    return cryptobuffer
+// This function will overwrite "data" with the encrypted data
+prepare_message :: proc(cstates: ^CipherStates, data: []u8) -> CryptoBuffer {
+    result : CryptoBuffer
+    switch cstates.initiator {
+        case true: {
+            result = internals.cipherstate_EncryptWithAd(&cstates.c1_i_to_r, nil, data)
+        }
+        case false: {
+            result = internals.cipherstate_EncryptWithAd(&cstates.c2_r_to_i, nil, data)
+        }
+    }
+    return result
 }
 
-// This function will overwrite the encrypted message slice
-responder_open_message :: proc(cstates: ^CipherStates, encrypted_message: ^[]u8) -> ([]u8, NoiseStatus) {
-    cryptobuffer := internals.cryptobuffer_from_slice(encrypted_message^)
-    return internals.cipherstate_DecryptWithAd(&cstates.c1_i_to_r, nil, cryptobuffer)
+// This function will overwrite the "encrypted_message" with the decrypted data
+open_message :: proc(cstates: ^CipherStates, encrypted_message: CryptoBuffer) -> ([]u8, NoiseStatus) {
+    result : []u8
+    status : NoiseStatus
+    switch cstates.initiator {
+        case true: {
+            result, status = internals.cipherstate_DecryptWithAd(&cstates.c2_r_to_i, nil, encrypted_message)
+        }
+        case false: {
+            result, status = internals.cipherstate_DecryptWithAd(&cstates.c1_i_to_r, nil, encrypted_message)
+        }
+    }
+    return result, status
 }
-
-// This function will overwrite the message slice
-responder_prepare_message :: proc(cstates: ^CipherStates, message: []u8) -> CryptoBuffer {
-    cryptobuffer := internals.cipherstate_EncryptWithAd(&cstates.c2_r_to_i, nil, message)
-    return cryptobuffer
-}
-
-// This function will overwrite the encrypted message slice
-initiator_open_message :: proc(cstates: ^CipherStates, encrypted_message: ^[]u8) -> ([]u8, NoiseStatus) {
-    cryptobuffer := internals.cryptobuffer_from_slice(encrypted_message^)
-    return internals.cipherstate_DecryptWithAd(&cstates.c2_r_to_i, nil, cryptobuffer)
-}
-
 
 KeyPair :: internals.KeyPair
 
