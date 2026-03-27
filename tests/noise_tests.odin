@@ -171,6 +171,11 @@ testing_random_protocols :: proc(t: ^testing.T) {
             res_rs = initiator_s.public
         }
 
+        psk : [32]u8
+        if internals.is_psk_pattern(pattern) {
+            crypto.rand_bytes(psk[:])
+        }
+
         initiator_handshakestate, ini_ini_status := internals.handshakestate_Initialize(
             true,
             nil, 
@@ -179,6 +184,7 @@ testing_random_protocols :: proc(t: ^testing.T) {
             ini_rs,
             nil,
             protocol_name = protocol_name,
+            psk = psk
         )
         responder_handshakestate, res_ini_status := internals.handshakestate_Initialize(
             false,
@@ -187,7 +193,8 @@ testing_random_protocols :: proc(t: ^testing.T) {
             nil,
             res_rs,
             nil,
-            protocol_name = protocol_name
+            protocol_name = protocol_name,
+            psk = psk
         )
         fmt.println("ini_ini_status: ", ini_ini_status)
         fmt.println("res_ini_status: ", res_ini_status)
