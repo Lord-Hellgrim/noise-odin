@@ -196,8 +196,7 @@ testing_random_protocols :: proc(t: ^testing.T) {
             protocol_name = protocol_name,
             psk = psk
         )
-        fmt.println("ini_ini_status: ", ini_ini_status)
-        fmt.println("res_ini_status: ", res_ini_status)
+        log.info("HELLO!!")
         testing.expect(t, ini_ini_status == .Ok)
         testing.expect(t, res_ini_status == .Ok)
         
