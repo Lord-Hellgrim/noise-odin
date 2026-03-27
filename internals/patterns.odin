@@ -313,7 +313,7 @@ PATTERN_KNpsk0 : MessagePattern = {
 //     -> e
 //     <- e, ee, se, psk
 PATTERN_KNpsk2 : MessagePattern = {
-    pre_messages = {.res_s},
+    pre_messages = {.ini_s},
     messages = {
         {.e},
         {.e, .ee, .se, .psk},
