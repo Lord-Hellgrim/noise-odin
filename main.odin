@@ -112,7 +112,7 @@ test_1000_random_protocols :: proc() {
     } else {
         fmt.println("SUCCESS!!")
         fmt.println("Elapsed time: ", stopwatch._accumulation)
-        fmt.println("Time per handshake and message: ", stopwatch._accumulation / 10_000)
+        fmt.println("Time per handshake and message: ", stopwatch._accumulation / 1000)
     }
 
     strings.builder_destroy(&test_log)
