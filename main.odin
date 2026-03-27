@@ -14,12 +14,13 @@ import "internals"
 
 
 main :: proc() {
-for i in 0..<10_000 {
+    
+    // for i in 0..<10_000 {
 
-        protocol := internals.random_protocol()
-        protocol_name := internals.protocol_text_from_struct(protocol)
-        // protocol_name := "Noise_IX_448_AESGCM_SHA256"
-        // protocol, parse_error := parse_protocol_string(protocol_name)
+        // protocol := internals.random_protocol()
+        // protocol_name := internals.protocol_text_from_struct(protocol)
+        protocol_name := "Noise_KNpsk2_448_ChaChaPoly_SHA256"
+        protocol, parse_error := parse_protocol_string(protocol_name)
         fmt.println(protocol_name)
         initiator_s := internals.GENERATE_KEYPAIR(protocol)
         responder_s := internals.GENERATE_KEYPAIR(protocol)
@@ -95,5 +96,5 @@ for i in 0..<10_000 {
         
         internals.handshakestate_destroy(&initiator_handshakestate)
         internals.handshakestate_destroy(&responder_handshakestate)
-    }
+    // }
 }
