@@ -2,9 +2,7 @@ package internals
 
 import "core:crypto"
 import "core:crypto/hash"
-import "core:crypto/x25519"
 import "core:crypto/aead"
-import "core:crypto/sha2"
 import "core:crypto/ecdh"
 import "core:math/rand"
 
@@ -165,7 +163,7 @@ ERROR_PROTOCOL :: Protocol {
 }
 
 
-parse_protocol_string :: proc "contextless" (protocol_string: string) -> (Protocol, NoiseStatus) {
+parse_protocol_string :: proc (protocol_string: string) -> (Protocol, NoiseStatus) {
     
     if len(protocol_string) > 255 {
         return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
@@ -904,7 +902,7 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
                     case KeyPair: {
                         ecdh.public_key_bytes(&e.public, e_public)
                     }
-                    case nil: panic("There must be a bug in the compiler. e is set a few lines before this check")
+                    case nil: panic("There must be a bug in the compiler. e is generated a few lines before this check")
                 }
                 assert(len(e_public) == DhLen(get_curve(self)))
                 elems_added, append_error := append(&message_buffer, ..e_public)

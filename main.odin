@@ -12,6 +12,9 @@ import "core:math/rand"
 
 import "internals"
 
+
+
+
 test_1000_random_protocols :: proc() {
     
     test_log := strings.builder_make()
@@ -222,7 +225,9 @@ test_one_protocol :: proc(protocol_name: string) {
 
 main :: proc() {
 
-    test_one_protocol("Noise_KNpsk2_448_ChaChaPoly_SHA256")
+    protocol := internals.random_protocol()
+    protocol_name := internals.protocol_text_from_struct(protocol)
+    test_one_protocol(protocol_name)
 
     test_1000_random_protocols()
 
