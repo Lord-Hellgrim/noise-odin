@@ -4,38 +4,30 @@ import "core:crypto"
 import "core:crypto/hash"
 import "core:crypto/aead"
 import "core:crypto/ecdh"
-import "core:math/rand"
-import "core:time"
 
 import "core:slice"
 import "core:strings"
 
 import "core:mem"
 
-import "core:simd"
-
 import "core:fmt"
-
-import "core:net"
 
 
 /// A constant specifying the size in bytes that the hash function uses internally to divide its input for iterative processing. 
 /// This is needed to use the hash function with HMAC (BLOCKLEN is B in [3]).
 
-MAX_PACKET_SIZE: u64 : 65535;
-
+MAX_PACKET_SIZE :: 65535;
 
 NoiseStatus :: enum {
     Ok,
     Decryption_failed_to_authenticate,
     Protocol_could_not_be_parsed,
-    Io,
     Pending_Handshake,
     Handshake_Complete,
-    invalid_address,
     rs_not_set_for_s_pre_message,
     out_of_memory,
-    nil_passed_to_read_message,
+    invalid_message_passed_to_read_message,
+    tried_to_encrypt_message_bigger_than_MAX_PACKET_SIZE,
 }
 
 
@@ -292,19 +284,6 @@ dhtype_to_curve :: proc(dh: DhType) -> ecdh.Curve {
         case .x448:     crv = .X448
     }
     return crv
-}
-
-random_protocol :: proc() -> Protocol {
-    cipher  := CipherType(rand.int_range(0, len(CipherType)))
-    dh      := DhType(rand.int_range(0, len(DhType)))
-    hash    := HashType(rand.int_range(0, len(HashType)))
-    HandP   := HandshakePattern(rand.int_range(0, len(HandshakePattern)))
-    return Protocol {
-        cipher = cipher,
-        dh = dhtype_to_curve(dh),
-        hash = hash,
-        handshake_pattern = HandP,
-    }
 }
 
 protocol_text_from_struct :: proc(protocol: Protocol) -> string {
@@ -594,7 +573,11 @@ cipherstate_HasKey :: proc(self: ^CipherState) -> bool {
 }
 
 ///If k is non-empty returns ENCRYPT(k, n++, ad, plaintext). Otherwise returns plaintext.
-cipherstate_EncryptWithAd :: proc(self: ^CipherState, ad: []u8, plaintext: []u8) -> CryptoBuffer {
+cipherstate_EncryptWithAd :: proc(self: ^CipherState, ad: []u8, plaintext: []u8) -> (CryptoBuffer, NoiseStatus) {
+
+    if len(plaintext) > MAX_PACKET_SIZE - 16 {
+        return {}, .tried_to_encrypt_message_bigger_than_MAX_PACKET_SIZE
+    }
 
     if cipherstate_HasKey(self) {
         temp, encrypt_error := ENCRYPT(self.k, self.n, ad, plaintext, self.protocol)
@@ -604,9 +587,9 @@ cipherstate_EncryptWithAd :: proc(self: ^CipherState, ad: []u8, plaintext: []u8)
             panic(strings.to_string(s))
         }
         self.n += 1;
-        return temp
+        return temp, .Ok
     } else {
-        return CryptoBuffer {main_body = plaintext}
+        return CryptoBuffer {main_body = plaintext}, .Ok
     }
 }
 
@@ -705,10 +688,10 @@ symmetricstate_GetHandshakeHash :: proc(self: ^SymmetricState) -> []u8 {
 
 /// Sets ciphertext = EncryptWithAd(h, plaintext), calls MixHash(ciphertext), and returns ciphertext. 
 /// Note that if k is empty, the EncryptWithAd() call will set ciphertext equal to plaintext.
-symmetricstate_EncryptAndHash :: proc(self:  ^SymmetricState, plaintext: []u8) -> CryptoBuffer{
-    ciphertext := cipherstate_EncryptWithAd(&self.cipherstate, self.h[:HashLen(self.cipherstate.protocol.hash)], plaintext)
+symmetricstate_EncryptAndHash :: proc(self:  ^SymmetricState, plaintext: []u8) -> (CryptoBuffer, NoiseStatus) {
+    ciphertext, status := cipherstate_EncryptWithAd(&self.cipherstate, self.h[:HashLen(self.cipherstate.protocol.hash)], plaintext)
     symmetricstate_MixHash(self, ciphertext.main_body, ciphertext.tag[:])
-    return ciphertext
+    return ciphertext, status
 }
 
 /// Sets plaintext = DecryptWithAd(h, ciphertext), calls MixHash(ciphertext), and returns plaintext. 
@@ -919,13 +902,16 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
                 
                 dst := make([]u8, DhLen(get_curve(self)), self.symmetricstate.allocator)
                 ecdh.public_key_bytes(&unwrap(self.s).public, dst)
-                temp := symmetricstate_EncryptAndHash(&self.symmetricstate, dst)
+                temp, status := symmetricstate_EncryptAndHash(&self.symmetricstate, dst)
+                if status != .Ok {
+                    return {},{}, {}, status
+                }
                 
                 _, append_error := append(&message_buffer, ..temp.main_body)
                 if cipherstate_HasKey(&self.symmetricstate.cipherstate) {
                     _, append_error = append(&message_buffer, ..temp.tag[:])
                 }
-                if append_error == .Out_Of_Memory {
+                if append_error != .Out_Of_Memory {
                     fmt.eprintln("OOM")
                     return {}, {},{}, .out_of_memory
                 }
@@ -967,7 +953,10 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
     }
 
     if len(payload) != 0 {
-        encrypted_payload := symmetricstate_EncryptAndHash(&self.symmetricstate, payload)
+        encrypted_payload, status := symmetricstate_EncryptAndHash(&self.symmetricstate, payload)
+        if status != .Ok {
+            return {},{},{}, status
+        }
         append(&message_buffer, ..encrypted_payload.main_body)
         elems_added, append_error := append(&message_buffer, ..encrypted_payload.tag[:])
         if append_error == .Out_Of_Memory {
@@ -1009,7 +998,7 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
 handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (CipherState, CipherState, NoiseStatus) {
     // fmt.println("READ MESSAGE")
     if len(message) < 32 {
-        panic("Message len is too small to read from")
+        return {},{}, .invalid_message_passed_to_read_message
     }
     pattern := self.message_patterns.messages[self.current_pattern]
     self.current_pattern += 1

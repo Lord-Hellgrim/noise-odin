@@ -5,15 +5,12 @@ import "core:net"
 import "core:strings"
 import "core:slice"
 import "core:time"
-import "core:os"
 import "core:crypto/ecdh"
 import "core:crypto"
 import "core:math/rand"
 import "core:mem"
 
 import "internals"
-
-
 
 
 test_1000_random_protocols :: proc() {
@@ -25,7 +22,7 @@ test_1000_random_protocols :: proc() {
     time.stopwatch_start(&stopwatch)
     for i in 0..<1000 {
 
-        protocol := internals.random_protocol()
+        protocol := random_protocol()
         protocol_name := internals.protocol_text_from_struct(protocol)
         // protocol_name := "Noise_KNpsk2_448_ChaChaPoly_SHA256"
         // protocol, parse_error := parse_protocol_string(protocol_name)
@@ -219,6 +216,18 @@ test_one_protocol :: proc(protocol_name: string) {
     internals.handshakestate_destroy(&responder_handshakestate)
 }
 
+random_protocol :: proc() -> internals.Protocol {
+    cipher  := internals.CipherType(rand.int_range(0, len(internals.CipherType)))
+    dh      := internals.DhType(rand.int_range(0, len(internals.DhType)))
+    hash    := internals.HashType(rand.int_range(0, len(internals.HashType)))
+    HandP   := internals.HandshakePattern(rand.int_range(0, len(internals.HandshakePattern)))
+    return internals.Protocol {
+        cipher = cipher,
+        dh = internals.dhtype_to_curve(dh),
+        hash = hash,
+        handshake_pattern = HandP,
+    }
+}
 
 benchmark_dh :: proc() {
     allo : mem.Dynamic_Arena
