@@ -5,6 +5,7 @@ import "core:crypto/hash"
 import "core:crypto/aead"
 import "core:crypto/ecdh"
 import "core:math/rand"
+import "core:time"
 
 import "core:slice"
 import "core:strings"
@@ -884,12 +885,11 @@ handshakestate_destroy :: proc(state: ^HandshakeState) {
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
 handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, allocator := context.allocator) -> ([]u8, CipherState, CipherState, NoiseStatus) {
     // fmt.println("WRITE MESSAGE")
-
     message_buffer := make([dynamic]u8)
     pattern := self.message_patterns.messages[self.current_pattern]
     self.current_pattern += 1;
     for token in pattern {
-        // fmt.println("token: ", token)
+        fmt.println("token: ", token)
         switch token {
             case .e: {
                 self.e = GENERATE_KEYPAIR(self.symmetricstate.cipherstate.protocol)
@@ -1015,7 +1015,7 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
     self.current_pattern += 1
     message_cursor := 0
     for token in pattern {
-        // fmt.println("token: ", token)
+        fmt.println("token: ", token)
         switch token {
             case .e: {
                 re := make([]u8, DhLen(get_curve(self)), self.symmetricstate.allocator)

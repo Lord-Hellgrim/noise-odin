@@ -9,6 +9,7 @@ import "core:os"
 import "core:crypto/ecdh"
 import "core:crypto"
 import "core:math/rand"
+import "core:mem"
 
 import "internals"
 
@@ -186,7 +187,6 @@ test_one_protocol :: proc(protocol_name: string) {
     ini_message, res_message : []u8
     res_complete := false
     time.stopwatch_reset(&sw)
-    time.stopwatch_start(&sw)
     for {
         if ini_status == .Handshake_Complete && res_status == .Handshake_Complete {
             break
@@ -197,9 +197,6 @@ test_one_protocol :: proc(protocol_name: string) {
         }
         res_cstates, ini_message, res_status = responder_step(&responder_handshakestate, res_message, nil)
     }
-    time.stopwatch_stop(&sw)
-    fmt.println("Time 3: ", time.stopwatch_duration(sw))
-    time.stopwatch_reset(&sw)
     
     if ini_cstates.c1_i_to_r != res_cstates.c1_i_to_r {any_test_failed = true}
     if ini_cstates.c2_r_to_i != res_cstates.c2_r_to_i {any_test_failed = true}
@@ -214,23 +211,95 @@ test_one_protocol :: proc(protocol_name: string) {
     prepared_test_data := prepare_message(&ini_cstates, og_test_data[:])
     decrypted_test_data, decrypt_status := open_message(&res_cstates, prepared_test_data)
     time.stopwatch_stop(&sw)
-    fmt.println("Time 4: ", time.stopwatch_duration(sw))
+    fmt.println("Time cipher: ", time.stopwatch_duration(sw))
     if !slice.equal(backup_og[:], decrypted_test_data) {any_test_failed = true}
     
     
     internals.handshakestate_destroy(&initiator_handshakestate)
     internals.handshakestate_destroy(&responder_handshakestate)
+}
+
+
+benchmark_dh :: proc() {
+    allo : mem.Dynamic_Arena
+    mem.dynamic_arena_init(&allo)
+    allocator := mem.dynamic_arena_allocator(&allo)
+
+    protocol := DEFAULT_PROTOCOL
+
+    p1 := internals.GENERATE_KEYPAIR(protocol)
+    p2 := internals.GENERATE_KEYPAIR(protocol)
     
+    sw : time.Stopwatch
+    time.stopwatch_start(&sw)
+    outputs : [1000][]u8
+    for i in 0..<1000 {
+        outputs[i] = internals.DH(&p1, &p2.public, allocator)
+    }
+    time.stopwatch_stop(&sw)
+    fmt.println("Time dh: ", time.stopwatch_duration(sw) / 1000)
+}
+
+benchmark_hash :: proc() {
+    allo : mem.Dynamic_Arena
+    mem.dynamic_arena_init(&allo)
+    allocator := mem.dynamic_arena_allocator(&allo)
+
+    protocol := DEFAULT_PROTOCOL
+
+    h1 : [128]u8
+    h2 : [128]u8
+    crypto.rand_bytes(h1[:])
+    crypto.rand_bytes(h2[:])
+    
+    sw : time.Stopwatch
+    time.stopwatch_start(&sw)
+    outputs : [1000][]u8
+    for i in 0..<1000 {
+        outputs[i] = internals.HASH(allocator, protocol, h1[:], h2[:])
+    }
+    time.stopwatch_stop(&sw)
+    fmt.println("Time hash: ", time.stopwatch_duration(sw) / 1000)
+}
+
+benchmark_cipher :: proc() {
+    allo : mem.Dynamic_Arena
+    mem.dynamic_arena_init(&allo)
+    allocator := mem.dynamic_arena_allocator(&allo)
+
+    protocol := DEFAULT_PROTOCOL
+
+    k : [32]u8
+    h2 : [128]u8
+    crypto.rand_bytes(k[:])
+    crypto.rand_bytes(h2[:])
+    
+    sw : time.Stopwatch
+    time.stopwatch_start(&sw)
+    plaintexts : [1000][128]u8
+    for &t in plaintexts {
+        crypto.rand_bytes(t[:])
+    } 
+
+    outputs : [1000]CryptoBuffer
+    for i in 0..<1000 {
+        outputs[i], _ = internals.ENCRYPT(k, u64(i), nil, plaintexts[i][:], protocol)
+    }
+    time.stopwatch_stop(&sw)
+    fmt.println("Time cipher: ", time.stopwatch_duration(sw) / 1000)
 }
 
 main :: proc() {
 
-    protocol := internals.random_protocol()
-    protocol_name := internals.protocol_text_from_struct(protocol)
+    protocol_name := "Noise_NN_448_ChaChaPoly_SHA256"
+    protocol, status := internals.parse_protocol_string(protocol_name)
+    fmt.println(protocol_name)
     test_one_protocol(protocol_name)
 
-    test_1000_random_protocols()
+    // test_1000_random_protocols()
 
-
+    // benchmark_dh()
+    // benchmark_hash()
+    // benchmark_cipher()
     
 }
