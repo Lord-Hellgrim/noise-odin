@@ -24,8 +24,9 @@ test_1000_random_protocols :: proc() {
 
         protocol := random_protocol()
         protocol_name := internals.protocol_text_from_struct(protocol)
-        // protocol_name := "Noise_KNpsk2_448_ChaChaPoly_SHA256"
+        // protocol_name := "Noise_INpsk2_448_AESGCM_SHA256"
         // protocol, parse_error := parse_protocol_string(protocol_name)
+        // fmt.println(protocol_name)
         fmt.sbprintfln(&test_log, protocol_name)
         initiator_s := internals.GENERATE_KEYPAIR(protocol)
         responder_s := internals.GENERATE_KEYPAIR(protocol)
@@ -88,13 +89,13 @@ test_1000_random_protocols :: proc() {
         if ini_cstates.c1_i_to_r != res_cstates.c1_i_to_r {any_test_failed = true}
         if ini_cstates.c2_r_to_i != res_cstates.c2_r_to_i {any_test_failed = true}
         
-        og_test_data := make([]u8, rand.int_range(128, 1_000_000))
+        og_test_data := make([]u8, rand.int_range(128, internals.MAX_PACKET_SIZE-16))
         defer delete(og_test_data)
         crypto.rand_bytes(og_test_data[:])
         backup_og := slice.clone(og_test_data)
         defer delete(backup_og)
 
-        prepared_test_data := prepare_message(&ini_cstates, og_test_data[:])
+        prepared_test_data, status := prepare_message(&ini_cstates, og_test_data[:])
         decrypted_test_data, decrypt_status := open_message(&res_cstates, prepared_test_data)
 
         if !slice.equal(backup_og[:], decrypted_test_data) {any_test_failed = true}
@@ -110,6 +111,7 @@ test_1000_random_protocols :: proc() {
 
     if any_test_failed {
         fmt.println(strings.to_string(test_log))
+        fmt.println("SOME TEST FAILED!!!")
     } else {
         fmt.println("SUCCESS!!")
         fmt.println("Elapsed time: ", stopwatch._accumulation)
@@ -195,21 +197,30 @@ test_one_protocol :: proc(protocol_name: string) {
         res_cstates, ini_message, res_status = responder_step(&responder_handshakestate, res_message, nil)
     }
     
-    if ini_cstates.c1_i_to_r != res_cstates.c1_i_to_r {any_test_failed = true}
-    if ini_cstates.c2_r_to_i != res_cstates.c2_r_to_i {any_test_failed = true}
+    assert(ini_cstates.c1_i_to_r == res_cstates.c1_i_to_r)
+    assert(ini_cstates.c2_r_to_i == res_cstates.c2_r_to_i)
     
     time.stopwatch_start(&sw)
-    og_test_data := make([]u8, 80_000)
+    og_test_data := make([]u8, 65_000)
     defer delete(og_test_data)
     crypto.rand_bytes(og_test_data[:])
     backup_og := slice.clone(og_test_data)
     defer delete(backup_og)
 
-    prepared_test_data := prepare_message(&ini_cstates, og_test_data[:])
+    prepared_test_data, status := prepare_message(&ini_cstates, og_test_data[:])
+    if status != .Ok {
+        fmt.println(status)
+        panic("   ")
+    }
     decrypted_test_data, decrypt_status := open_message(&res_cstates, prepared_test_data)
+    fmt.println(decrypt_status)
     time.stopwatch_stop(&sw)
     fmt.println("Time cipher: ", time.stopwatch_duration(sw))
-    if !slice.equal(backup_og[:], decrypted_test_data) {any_test_failed = true}
+    // fmt.println(backup_og[:])
+    // fmt.println(decrypted_test_data)
+    fmt.println(len(decrypted_test_data))
+    fmt.println(len(backup_og))
+    assert(slice.equal(backup_og[:], decrypted_test_data))
     
     
     internals.handshakestate_destroy(&initiator_handshakestate)
@@ -300,12 +311,12 @@ benchmark_cipher :: proc() {
 
 main :: proc() {
 
-    protocol_name := "Noise_NN_448_ChaChaPoly_SHA256"
+    protocol_name := "Noise_NKpsk2_448_AESGCM_Blake2b"
     protocol, status := internals.parse_protocol_string(protocol_name)
     fmt.println(protocol_name)
     test_one_protocol(protocol_name)
 
-    // test_1000_random_protocols()
+    test_1000_random_protocols()
 
     // benchmark_dh()
     // benchmark_hash()

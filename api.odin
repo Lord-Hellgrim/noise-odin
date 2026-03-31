@@ -58,7 +58,7 @@ responder_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, pay
 }
 
 // This function will overwrite "data" with the encrypted data
-prepare_message :: proc(cstates: ^CipherStates, data: []u8) -> CryptoBuffer {
+prepare_message :: proc(cstates: ^CipherStates, data: []u8) -> (CryptoBuffer, NoiseStatus) {
     result : CryptoBuffer
     status : NoiseStatus
     switch cstates.initiator {
@@ -69,7 +69,7 @@ prepare_message :: proc(cstates: ^CipherStates, data: []u8) -> CryptoBuffer {
             result, status = internals.cipherstate_EncryptWithAd(&cstates.c2_r_to_i, nil, data)
         }
     }
-    return result
+    return result, status
 }
 
 // This function will overwrite the "encrypted_message" with the decrypted data
