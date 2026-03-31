@@ -8,10 +8,15 @@ import "core:fmt"
 
 NoiseStatus :: internals.NoiseStatus
 
+HandshakeState :: internals.HandshakeState
+read_message :: internals.handshakestate_read_message
+write_message :: internals.handshakestate_write_message
+
+KeyPair :: internals.KeyPair
+keypair_random :: internals.keypair_random
+
 DEFAULT_PROTOCOL_NAME :: internals.DEFAULT_PROTOCOL_NAME
 DEFAULT_PROTOCOL :: internals.DEFAULT_PROTOCOL
-
-keypair_random :: internals.keypair_random
 
 parse_protocol_string :: internals.parse_protocol_string
 
@@ -44,13 +49,14 @@ initiator_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, pay
     output_message : []u8
     c1, c2 : internals.CipherState
     status : NoiseStatus
+    payload_buffer : []u8
     
     if input_message == nil {
-        output_message, c1, c2, status = internals.handshakestate_write_message(handshakestate, payload, allocator)
+        output_message, c1, c2, status = write_message(handshakestate, payload, allocator)
     } else {
-        c1, c2, status = internals.handshakestate_read_message(handshakestate, input_message)
+        payload_buffer, c1, c2, status = read_message(handshakestate, input_message)
         if status != .Handshake_Complete {
-            output_message, c1, c2, status = internals.handshakestate_write_message(handshakestate, payload, allocator)
+            output_message, c1, c2, status = write_message(handshakestate, payload, allocator)
         }
     }
 
@@ -60,12 +66,12 @@ initiator_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, pay
 responder_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, payload : []u8 = nil, allocator := context.allocator) -> (CipherStates, []u8, NoiseStatus) {
     output_message : []u8
     if input_message == nil {
-        return {}, {}, .nil_passed_to_read_message,
+        return {}, {}, .invalid_message_passed_to_read_message,
     }
 
-    c1, c2, status := internals.handshakestate_read_message(handshakestate, input_message)
+    payload_buffer, c1, c2, status := read_message(handshakestate, input_message)
     if status != .Handshake_Complete {
-        output_message, c1, c2, status = internals.handshakestate_write_message(handshakestate, payload, allocator)
+        output_message, c1, c2, status = write_message(handshakestate, payload, allocator)
     }
 
     return CipherStates{c1_i_to_r = c1, c2_r_to_i = c2, initiator = false}, output_message, status
@@ -74,12 +80,13 @@ responder_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, pay
 // This function will overwrite "data" with the encrypted data
 prepare_message :: proc(cstates: ^CipherStates, data: []u8) -> CryptoBuffer {
     result : CryptoBuffer
+    status : NoiseStatus
     switch cstates.initiator {
         case true: {
-            result = internals.cipherstate_EncryptWithAd(&cstates.c1_i_to_r, nil, data)
+            result, status = internals.cipherstate_EncryptWithAd(&cstates.c1_i_to_r, nil, data)
         }
         case false: {
-            result = internals.cipherstate_EncryptWithAd(&cstates.c2_r_to_i, nil, data)
+            result, status = internals.cipherstate_EncryptWithAd(&cstates.c2_r_to_i, nil, data)
         }
     }
     return result
@@ -100,7 +107,5 @@ open_message :: proc(cstates: ^CipherStates, encrypted_message: CryptoBuffer) ->
     return result, status
 }
 
-KeyPair :: internals.KeyPair
 
-HandshakeState :: internals.HandshakeState
 

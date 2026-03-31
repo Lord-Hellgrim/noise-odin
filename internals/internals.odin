@@ -995,10 +995,10 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
 /// Calls DecryptAndHash() on the remaining bytes of the message and stores the output into payload_buffer.
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
-handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (CipherState, CipherState, NoiseStatus) {
+handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> ([]u8, CipherState, CipherState, NoiseStatus) {
     // fmt.println("READ MESSAGE")
     if len(message) < 32 {
-        return {},{}, .invalid_message_passed_to_read_message
+        return {},{},{}, .invalid_message_passed_to_read_message
     }
     pattern := self.message_patterns.messages[self.current_pattern]
     self.current_pattern += 1
@@ -1093,20 +1093,25 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> (C
         };
     }
 
+    payload_buffer :[]u8
+    
     if message_cursor < len(message) {
-        rest_of_message := make([]u8, len(message) - message_cursor)
-        copy(rest_of_message, message[message_cursor:])
-        rest_buffer := cryptobuffer_from_slice(rest_of_message)
-        symmetricstate_DecryptAndHash(&self.symmetricstate, rest_buffer)
+        payload_buffer = make([]u8, len(message) - message_cursor, self.symmetricstate.allocator)
+        copy(payload_buffer, message[message_cursor:])
+        rest_buffer := cryptobuffer_from_slice(payload_buffer)
+        payload_buffer, payload_status := symmetricstate_DecryptAndHash(&self.symmetricstate, rest_buffer)
+        if payload_status != .Ok {
+            return {},{},{}, payload_status
+        }
     }
 
     if self.current_pattern == len(self.message_patterns.messages) {
         c1, c2 := symmetricstate_Split(&self.symmetricstate)
         self.current_pattern = 0
         free_all(self.symmetricstate.allocator)
-        return c1, c2, .Handshake_Complete
+        return payload_buffer, c1, c2, .Handshake_Complete
     } else {
-        return {}, {}, .Pending_Handshake
+        return payload_buffer, {}, {}, .Pending_Handshake
     }
 }
 
