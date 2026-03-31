@@ -304,7 +304,7 @@ protocol_text_from_struct :: proc(protocol: Protocol) -> string {
     }
 
     h := protocol.hash
-
+    
     fmt.sbprintf(&s, "Noise_%v_%v_%v_%v", hp, dh, c, h)
 
     return strings.to_string(s)
