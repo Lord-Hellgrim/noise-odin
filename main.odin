@@ -311,12 +311,12 @@ benchmark_cipher :: proc() {
 
 main :: proc() {
 
-    protocol_name := "Noise_NKpsk2_448_AESGCM_Blake2b"
-    protocol, status := internals.parse_protocol_string(protocol_name)
-    fmt.println(protocol_name)
-    test_one_protocol(protocol_name)
+    // protocol_name := "Noise_NKpsk2_448_AESGCM_Blake2b"
+    // protocol, status := internals.parse_protocol_string(protocol_name)
+    // fmt.println(protocol_name)
+    // test_one_protocol(protocol_name)
 
-    test_1000_random_protocols()
+    // test_1000_random_protocols()
 
     // benchmark_dh()
     // benchmark_hash()
