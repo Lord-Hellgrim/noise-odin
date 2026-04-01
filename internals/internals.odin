@@ -916,6 +916,7 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
             }
 
             case .ee: {
+                fmt.println(self)
                 dh := DH(&self.e.?, &self.re.?, self.symmetricstate.allocator)
                 symmetricstate_MixKey(&self.symmetricstate, dh)
             }
