@@ -859,12 +859,12 @@ handshakestate_destroy :: proc(state: ^HandshakeState) {
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
 handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, allocator := context.allocator) -> ([]u8, CipherState, CipherState, NoiseStatus) {
-    // fmt.println("WRITE MESSAGE")
+    fmt.println("WRITE MESSAGE")
     message_buffer := make([dynamic]u8, allocator)
     pattern := self.message_patterns.messages[self.current_pattern]
     self.current_pattern += 1;
     for token in pattern {
-        // fmt.println("token: ", token)
+        fmt.println("token: ", token)
         switch token {
 
             case .e: {
