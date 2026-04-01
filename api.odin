@@ -5,6 +5,7 @@ import "internals"
 NoiseStatus :: internals.NoiseStatus
 
 HandshakeState :: internals.HandshakeState
+handshakestate_initialize :: internals.handshakestate_initialize
 read_message :: internals.handshakestate_read_message
 write_message :: internals.handshakestate_write_message
 
@@ -18,6 +19,7 @@ parse_protocol_string :: internals.parse_protocol_string
 
 CryptoBuffer :: internals.CryptoBuffer
 
+to_le_bytes :: internals.to_le_bytes
 
 CipherStates :: struct {
     c1_i_to_r: internals.CipherState,
@@ -86,6 +88,3 @@ open_message :: proc(cstates: ^CipherStates, encrypted_message: CryptoBuffer) ->
     }
     return result, status
 }
-
-
-

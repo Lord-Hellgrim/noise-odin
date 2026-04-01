@@ -619,7 +619,7 @@ cipherstate_Rekey :: proc(self: ^CipherState) {
 /// Otherwise sets h = HASH(protocol_name).
 /// Sets ck = h.
 /// Calls InitializeKey(empty).
-symmetricstate_InitializeSymmetric :: proc(protocol_name: string) -> (SymmetricState, NoiseStatus) {
+symmetricstate_initialize_symmetric :: proc(protocol_name: string) -> (SymmetricState, NoiseStatus) {
     zeroslice : [32]u8
 
     backing := new(mem.Dynamic_Arena)
@@ -749,7 +749,7 @@ symmetricstate_Split :: proc(self: ^SymmetricState) -> (CipherState, CipherState
 /// If multiple public keys are listed in either party's pre-message, the public keys are hashed in the order that they are listed.
 
 /// Sets message_patterns to the message patterns from handshake_pattern.
-handshakestate_Initialize :: proc(
+handshakestate_initialize :: proc(
     initiator: bool,
     prologue: []u8,
     s: Maybe(KeyPair),
@@ -764,7 +764,7 @@ handshakestate_Initialize :: proc(
     re := re
 
     
-    symmetricstate, status := symmetricstate_InitializeSymmetric(protocol_name)
+    symmetricstate, status := symmetricstate_initialize_symmetric(protocol_name)
     if status == .Protocol_could_not_be_parsed {
         return HandshakeState{}, status
     }
@@ -860,7 +860,7 @@ handshakestate_destroy :: proc(state: ^HandshakeState) {
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
 handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, allocator := context.allocator) -> ([]u8, CipherState, CipherState, NoiseStatus) {
     // fmt.println("WRITE MESSAGE")
-    message_buffer := make([dynamic]u8)
+    message_buffer := make([dynamic]u8, allocator)
     pattern := self.message_patterns.messages[self.current_pattern]
     self.current_pattern += 1;
     for token in pattern {

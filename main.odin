@@ -47,7 +47,7 @@ test_1000_random_protocols :: proc() {
             crypto.rand_bytes(psk[:])
         }
 
-        initiator_handshakestate, ini_ini_status := internals.handshakestate_Initialize(
+        initiator_handshakestate, ini_ini_status := internals.handshakestate_initialize(
             true,
             nil, 
             initiator_s, 
@@ -57,7 +57,7 @@ test_1000_random_protocols :: proc() {
             protocol_name = protocol_name,
             psk = psk
         )
-        responder_handshakestate, res_ini_status := internals.handshakestate_Initialize(
+        responder_handshakestate, res_ini_status := internals.handshakestate_initialize(
             false,
             nil,
             responder_s,
@@ -155,7 +155,7 @@ test_one_protocol :: proc(protocol_name: string) {
         crypto.rand_bytes(psk[:])
     }
 
-    initiator_handshakestate, ini_ini_status := internals.handshakestate_Initialize(
+    initiator_handshakestate, ini_ini_status := internals.handshakestate_initialize(
         true,
         nil, 
         initiator_s, 
@@ -165,7 +165,7 @@ test_one_protocol :: proc(protocol_name: string) {
         protocol_name = protocol_name,
         psk = psk
     )
-    responder_handshakestate, res_ini_status := internals.handshakestate_Initialize(
+    responder_handshakestate, res_ini_status := internals.handshakestate_initialize(
         false,
         nil,
         responder_s,
