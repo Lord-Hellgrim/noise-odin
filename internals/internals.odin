@@ -842,6 +842,31 @@ handshakestate_initialize :: proc(
     return output, .Ok
 }
 
+print_handshakestate :: proc(hs: HandshakeState) {
+    fmt.println(hs.symmetricstate.cipherstate.protocol)
+    fmt.println("Initiator: ", hs.initiator)
+    if hs.e == nil {
+        fmt.println("hs.e = nil")
+    } else {
+        fmt.println("hs.e = SET")
+    }
+    if hs.s == nil {
+        fmt.println("hs.s = nil")
+    } else {
+        fmt.println("hs.s = SET")
+    }
+    if hs.re == nil {
+        fmt.println("hs.re = nil")
+    } else {
+        fmt.println("hs.re = SET")
+    }
+    if hs.rs == nil {
+        fmt.println("hs.rs = nil")
+    } else {
+        fmt.println("hs.rs = SET")
+    }
+}
+
 handshakestate_destroy :: proc(state: ^HandshakeState) {
     free_all(state.symmetricstate.allocator)
     mem.dynamic_arena_destroy(state.symmetricstate.backing)
@@ -916,7 +941,7 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
             }
 
             case .ee: {
-                fmt.println(self)
+                print_handshakestate(self^)
                 dh := DH(&self.e.?, &self.re.?, self.symmetricstate.allocator)
                 symmetricstate_MixKey(&self.symmetricstate, dh)
             }

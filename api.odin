@@ -1,6 +1,7 @@
 package noise
 
 import "internals"
+import "core:fmt"
 
 NoiseStatus :: internals.NoiseStatus
 
@@ -88,3 +89,4 @@ open_message :: proc(cstates: ^CipherStates, encrypted_message: CryptoBuffer) ->
     }
     return result, status
 }
+
