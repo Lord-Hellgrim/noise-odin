@@ -760,6 +760,7 @@ handshakestate_initialize :: proc(
     psk : [32]u8 = 0,
 ) -> (HandshakeState, NoiseStatus) {
 
+    s  := s
     rs := rs
     re := re
 
@@ -820,6 +821,10 @@ handshakestate_initialize :: proc(
                 symmetricstate_MixHash(&symmetricstate, dst[:DhLen(symmetricstate.cipherstate.protocol.dh)])
             }
         }
+    }
+
+    if s == nil {
+        s = GENERATE_KEYPAIR(symmetricstate.cipherstate.protocol)
     }
 
     output := HandshakeState {
