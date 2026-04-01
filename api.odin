@@ -19,6 +19,7 @@ DEFAULT_PROTOCOL :: internals.DEFAULT_PROTOCOL
 parse_protocol_string :: internals.parse_protocol_string
 
 CryptoBuffer :: internals.CryptoBuffer
+cryptobuffer_from_slice :: internals.cryptobuffer_from_slice
 
 to_le_bytes :: internals.to_le_bytes
 
