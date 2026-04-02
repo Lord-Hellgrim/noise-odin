@@ -1,7 +1,25 @@
 package noise
 
 import "internals"
-import "core:fmt"
+
+
+/// This file defines the API for the noise protocol package. You should never need to call an internals procedure
+/// or use an internals type.
+
+/// In general, to complete a noise handshake you must:
+///     If you are initiating the connection, call initiator_step passing nil to the input_message parameter.
+///     Send the resulting []u8 to the responder (genrally a server) with the stream method of your choice (see examples)
+///     if the status code of the initiator_step call was .Handshake_Complete, you will have received a valid Cipherstates
+///     struct. Otherwise, read the response from the responder and feed the response data as the input_message to the
+///     next call to initiator_step until it returns .Handshake_Complete. You will then have a Cipherstates struct
+///     That you can pass to the prepare_message and open_message procedures to prepare messages for sending
+///     to the responder and for opening messages sent by the responder.
+
+///     If you are the responder, the method is much the same, except you must pass a valid input_message received
+///     from an initiator to the first call to responder_step. Repeat until the returned status is .Handshake_Complete.
+
+/// A noise_networking package is available to provide a simple abstraction layer for using noise over TCP. The design
+/// intent of the noise_networking package is to work well with odins nbio.
 
 NoiseStatus :: internals.NoiseStatus
 

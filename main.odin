@@ -253,6 +253,10 @@ random_protocol :: proc() -> internals.Protocol {
     }
 }
 
+example_usage :: proc() {
+    
+}
+
 benchmark_dh :: proc() {
     allo : mem.Dynamic_Arena
     mem.dynamic_arena_init(&allo)
