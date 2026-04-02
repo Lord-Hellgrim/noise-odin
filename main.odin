@@ -100,6 +100,7 @@ test_1000_random_protocols :: proc() {
 
         if !slice.equal(backup_og[:], decrypted_test_data) {any_test_failed = true}
         
+        test_1000_messages(&ini_cstates, &res_cstates)
         
         internals.handshakestate_destroy(&initiator_handshakestate)
         internals.handshakestate_destroy(&responder_handshakestate)
@@ -119,9 +120,11 @@ test_1000_random_protocols :: proc() {
     }
 
     strings.builder_destroy(&test_log)
+
+    fmt.println("SUCCESS!!")
 }
 
-test_one_protocol :: proc(protocol_name: string) {
+test_one_protocol :: proc(protocol_name: string) -> (CipherStates, CipherStates) {
     test_log := strings.builder_make()
     defer strings.builder_destroy(&test_log)
     any_test_failed := false
@@ -222,10 +225,26 @@ test_one_protocol :: proc(protocol_name: string) {
     fmt.println(len(backup_og))
     assert(slice.equal(backup_og[:], decrypted_test_data))
     
+    fmt.println("SUCCESS!!")
     
-    internals.handshakestate_destroy(&initiator_handshakestate)
-    internals.handshakestate_destroy(&responder_handshakestate)
+    return ini_cstates, res_cstates
 }
+
+test_1000_messages :: proc(ini_cstates: ^CipherStates, res_cstates: ^CipherStates) {
+    for i in 0..<1000 {
+        ini_message : [4096]u8
+        crypto.rand_bytes(ini_message[:])
+        ini_message_backup: = ini_message
+
+        prepared_ini_message, ini_prep_status := prepare_message(ini_cstates, ini_message[:])
+        opened_ini_message, ini_open_status := open_message(res_cstates, prepared_ini_message)
+        
+        assert(slice.equal(ini_message_backup[:], opened_ini_message))
+    }
+
+    // fmt.println("Test_1000_messages: PASSED!!")
+}
+
 
 random_protocol :: proc() -> internals.Protocol {
     cipher  := internals.CipherType(rand.int_range(0, len(internals.CipherType)))
@@ -311,15 +330,17 @@ benchmark_cipher :: proc() {
 
 main :: proc() {
 
-    // protocol_name := "Noise_NKpsk2_448_AESGCM_Blake2b"
-    // protocol, status := internals.parse_protocol_string(protocol_name)
-    // fmt.println(protocol_name)
-    // test_one_protocol(protocol_name)
+    protocol_name := "Noise_NKpsk2_448_AESGCM_Blake2b"
+    protocol, status := internals.parse_protocol_string(protocol_name)
+    fmt.println(protocol_name)
+    ini_cstates, res_cstates := test_one_protocol(protocol_name)
 
-    // test_1000_random_protocols()
+    test_1000_messages(&ini_cstates, &res_cstates)
 
-    // benchmark_dh()
-    // benchmark_hash()
-    // benchmark_cipher()
+    test_1000_random_protocols()
+
+    benchmark_dh()
+    benchmark_hash()
+    benchmark_cipher()
     
 }

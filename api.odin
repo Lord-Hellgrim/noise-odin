@@ -15,7 +15,6 @@ keypair_random :: internals.keypair_random
 
 DEFAULT_PROTOCOL_NAME :: internals.DEFAULT_PROTOCOL_NAME
 DEFAULT_PROTOCOL :: internals.DEFAULT_PROTOCOL
-
 parse_protocol_string :: internals.parse_protocol_string
 
 CryptoBuffer :: internals.CryptoBuffer

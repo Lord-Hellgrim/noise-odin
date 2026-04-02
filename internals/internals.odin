@@ -889,12 +889,12 @@ handshakestate_destroy :: proc(state: ^HandshakeState) {
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
 handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, allocator := context.allocator) -> ([]u8, CipherState, CipherState, NoiseStatus) {
-    fmt.println("WRITE MESSAGE")
+    // fmt.println("WRITE MESSAGE")
     message_buffer := make([dynamic]u8, allocator)
     pattern := self.message_patterns.messages[self.current_pattern]
     self.current_pattern += 1;
     for token in pattern {
-        fmt.println("token: ", token)
+        // fmt.println("token: ", token)
         switch token {
 
             case .e: {
@@ -941,7 +941,6 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
             }
 
             case .ee: {
-                print_handshakestate(self^)
                 dh := DH(&self.e.?, &self.re.?, self.symmetricstate.allocator)
                 symmetricstate_MixKey(&self.symmetricstate, dh)
             }
@@ -1017,7 +1016,7 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
 
 /// If there are no more message patterns returns two new CipherState objects by calling Split().
 handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> ([]u8, CipherState, CipherState, NoiseStatus) {
-    fmt.println("READ MESSAGE")
+    // fmt.println("READ MESSAGE")
     if len(message) < 32 {
         return {},{},{}, .invalid_message_passed_to_read_message
     }
@@ -1025,7 +1024,7 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> ([
     self.current_pattern += 1
     message_cursor := 0
     for token in pattern {
-        fmt.println("token: ", token)
+        // fmt.println("token: ", token)
         switch token {
             case .e: {
                 re := make([]u8, DhLen(get_curve(self)), self.symmetricstate.allocator)
