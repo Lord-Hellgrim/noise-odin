@@ -1,7 +1,6 @@
 package noise
 
 import "core:fmt"
-import "core:net"
 import "core:strings"
 import "core:slice"
 import "core:time"
@@ -112,7 +111,7 @@ test_1000_random_protocols :: proc() {
 
     if any_test_failed {
         fmt.println(strings.to_string(test_log))
-        fmt.println("SOME TEST FAILED!!!")
+        fmt.println("SOME PROTOCOL FAILED!!!")
     } else {
         fmt.println("SUCCESS!!")
         fmt.println("Elapsed time: ", stopwatch._accumulation)
@@ -128,8 +127,6 @@ test_one_protocol :: proc(protocol_name: string) -> (CipherStates, CipherStates)
     test_log := strings.builder_make()
     defer strings.builder_destroy(&test_log)
     any_test_failed := false
-    // protocol := internals.random_protocol()
-    // protocol_name := internals.protocol_text_from_struct(protocol)
 
     sw : time.Stopwatch
     time.stopwatch_start(&sw)
