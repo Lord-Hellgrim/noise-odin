@@ -241,10 +241,7 @@ test_1000_messages :: proc(ini_cstates: ^CipherStates, res_cstates: ^CipherState
         
         assert(slice.equal(ini_message_backup[:], opened_ini_message))
     }
-
-    // fmt.println("Test_1000_messages: PASSED!!")
 }
-
 
 random_protocol :: proc() -> internals.Protocol {
     cipher  := internals.CipherType(rand.int_range(0, len(internals.CipherType)))
