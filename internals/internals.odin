@@ -1113,7 +1113,7 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> ([
         };
     }
 
-    payload_buffer :[]u8
+    payload_buffer : []u8
     
     if message_cursor < len(message) {
         payload_buffer = make([]u8, len(message) - message_cursor, self.symmetricstate.allocator)
