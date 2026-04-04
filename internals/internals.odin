@@ -1075,16 +1075,22 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> ([
             }
             
             case .ee: {
-                print_handshakestate(self^)
                 dh := DH(&self.e.?, &self.re.?, self.symmetricstate.allocator)
                 symmetricstate_MixKey(&self.symmetricstate, dh)
             }
-
+            
             case .es: {
                 if self.initiator {
+                    print_handshakestate(self^) 
+                    fmt.println("self.e.public.curve: ", self.e.?.public._curve)
+                    fmt.println("self.rs.curve: ", self.rs.?._curve)
                     dh := DH(&self.e.?, &self.rs.?,self.symmetricstate.allocator)
                     symmetricstate_MixKey(&self.symmetricstate, dh);  
                 } else {
+                    print_handshakestate(self^)
+                    fmt.println("self.s.public.curve: ", self.s.?.public._curve)
+                    fmt.println("self.rs.curve: ", self.rs.?._curve)
+
                     dh := DH(&self.s.?, &self.re.?, self.symmetricstate.allocator)
                     symmetricstate_MixKey(&self.symmetricstate, dh);
                 }
