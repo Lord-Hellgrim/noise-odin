@@ -82,11 +82,14 @@ responder_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, pay
 prepare_message :: proc(cstates: ^CipherStates, data: []u8) -> (CryptoBuffer, NoiseStatus) {
     result : CryptoBuffer
     status : NoiseStatus
+    nonce : u64
     switch cstates.initiator {
         case true: {
+            nonce := cstates.c1_i_to_r.n
             result, status = internals.cipherstate_EncryptWithAd(&cstates.c1_i_to_r, nil, data)
         }
         case false: {
+            nonce := cstates.c2_r_to_i.n
             result, status = internals.cipherstate_EncryptWithAd(&cstates.c2_r_to_i, nil, data)
         }
     }
