@@ -1075,6 +1075,7 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> ([
             }
             
             case .ee: {
+                print_handshakestate(self^)
                 dh := DH(&self.e.?, &self.re.?, self.symmetricstate.allocator)
                 symmetricstate_MixKey(&self.symmetricstate, dh)
             }
