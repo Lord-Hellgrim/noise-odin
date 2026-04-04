@@ -1045,7 +1045,7 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> ([
             case .s: {
                 rs_size : int
                 if cipherstate_HasKey(&self.symmetricstate.cipherstate) {
-                    rs_size = DhLen(get_curve(self)) + 16
+                    rs_size = DhLen(get_curve(self)) + 24
                 } else {
                     rs_size = DhLen(get_curve(self))
                 }
