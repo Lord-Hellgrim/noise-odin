@@ -925,8 +925,9 @@ handshakestate_write_message :: proc(self: ^HandshakeState, payload: []u8, alloc
                 if status != .Ok {
                     return {},{}, {}, status
                 }
-                
-                _, append_error := append(&message_buffer, ..temp.main_body)
+                nonce_bytes := to_le_bytes(temp.nonce)
+                _, append_error := append(&message_buffer, ..nonce_bytes[:])
+                _, append_error = append(&message_buffer, ..temp.main_body)
                 if cipherstate_HasKey(&self.symmetricstate.cipherstate) {
                     _, append_error = append(&message_buffer, ..temp.tag[:])
                 }
