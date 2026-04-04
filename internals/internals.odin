@@ -1048,7 +1048,7 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> ([
                 if cipherstate_HasKey(&self.symmetricstate.cipherstate) {
                     rs_size = DhLen(get_curve(self)) + 24
                 } else {
-                    rs_size = DhLen(get_curve(self))
+                    rs_size = DhLen(get_curve(self)) + 8
                 }
                 rs := make([]u8, rs_size, self.symmetricstate.allocator)
                 copy(rs[:], message[message_cursor : message_cursor + rs_size])
