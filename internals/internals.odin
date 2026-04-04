@@ -355,6 +355,7 @@ DH :: proc(key_pair: ^KeyPair, their_public_key: ^ecdh.Public_Key, allocator: me
 
 // Keeps track of the 16 byte tag without relying on the input plaintext having a spare 16 byte capacity
 CryptoBuffer :: struct {
+    nonce: u64,
     main_body: []u8,
     tag: [16]u8,
 }
@@ -571,6 +572,8 @@ cipherstate_EncryptWithAd :: proc(self: ^CipherState, ad: []u8, plaintext: []u8)
         return {}, .tried_to_encrypt_message_bigger_than_MAX_PACKET_SIZE
     }
 
+    nonce := self.n
+
     if cipherstate_HasKey(self) {
         temp, encrypt_error := ENCRYPT(self.k, self.n, ad, plaintext, self.protocol)
         if encrypt_error != .Ok {
@@ -579,23 +582,23 @@ cipherstate_EncryptWithAd :: proc(self: ^CipherState, ad: []u8, plaintext: []u8)
         self.n += 1;
         return temp, .Ok
     } else {
-        return CryptoBuffer {main_body = plaintext}, .Ok
+        return CryptoBuffer {nonce = nonce, main_body = plaintext}, .Ok
     }
 }
 
 /// If k is non-empty returns DECRYPT(k, n++, ad, ciphertext). Otherwise returns ciphertext. 
 /// If an authentication failure occurs in DECRYPT() then n is not incremented and an error is signaled to the caller.
-cipherstate_DecryptWithAd :: proc(self: ^CipherState, ad: []u8, ciphertext: CryptoBuffer) -> ([]u8, NoiseStatus) {
-
+cipherstate_DecryptWithAd :: proc(self: ^CipherState, ad: []u8, ciphertext: CryptoBuffer) -> ([]u8, u64, NoiseStatus) {
+    nonce := ciphertext.nonce
     if cipherstate_HasKey(self) {
         plaintext, decrypt_error := DECRYPT(self.k, self.n, ad, ciphertext, self.protocol)
         if decrypt_error != .Ok {
-            return plaintext, decrypt_error
+            return plaintext, 0, decrypt_error
         }
         self.n += 1;
-        return plaintext, .Ok
+        return plaintext, nonce, .Ok
     } else {
-        return ciphertext.main_body, .Ok
+        return ciphertext.main_body, nonce, .Ok
     }
 }
 
@@ -691,18 +694,19 @@ symmetricstate_EncryptAndHash :: proc(self:  ^SymmetricState, plaintext: []u8) -
 
 /// Sets plaintext = DecryptWithAd(h, ciphertext), calls MixHash(ciphertext), and returns plaintext. 
 /// Note that if k is empty, the DecryptWithAd() call will set plaintext equal to ciphertext.
-symmetricstate_DecryptAndHash :: proc(self:  ^SymmetricState, ciphertext: CryptoBuffer) -> ([]u8, NoiseStatus) {
+symmetricstate_DecryptAndHash :: proc(self:  ^SymmetricState, ciphertext: CryptoBuffer) -> ([]u8, u64, NoiseStatus) {
+    
     ciphertext := ciphertext
     hash_text := CryptoBuffer {
         main_body = slice.clone(ciphertext.main_body, self.allocator),
         tag = ciphertext.tag,
     }
-    result, decrypt_error := cipherstate_DecryptWithAd(&self.cipherstate, self.h[:HashLen(self.cipherstate.protocol.hash)], ciphertext)
+    result, nonce, decrypt_error := cipherstate_DecryptWithAd(&self.cipherstate, self.h[:HashLen(self.cipherstate.protocol.hash)], ciphertext)
     if decrypt_error != .Ok {
-        return nil, decrypt_error
+        return nil, nonce, decrypt_error
     }
     symmetricstate_MixHash(self, hash_text.main_body, hash_text.tag[:])
-    return result, .Ok
+    return result, nonce, .Ok
 }
 
 /// Returns a pair of CipherState objects for encrypting transport messages. Executes the following steps, where zerolen is a zero-length byte sequence:
@@ -1049,12 +1053,13 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> ([
                 copy(rs[:], message[message_cursor : message_cursor + rs_size])
                 message_cursor += rs_size
                 temp : []u8
+                nonce : u64
                 if cipherstate_HasKey(&self.symmetricstate.cipherstate) {
                     rs_buffer := cryptobuffer_from_slice(rs)
-                    temp, _ = symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
+                    temp, nonce, _ = symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
                 } else {
                     rs_buffer := CryptoBuffer{main_body = rs[:], tag = 0}
-                    temp, _ = symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
+                    temp, nonce, _ = symmetricstate_DecryptAndHash(&self.symmetricstate, rs_buffer)
                 }
                 switch &self_rs in self.rs {
                     case nil: {
@@ -1111,7 +1116,7 @@ handshakestate_read_message :: proc(self: ^HandshakeState, message: []u8)  -> ([
         payload_buffer = make([]u8, len(message) - message_cursor, self.symmetricstate.allocator)
         copy(payload_buffer, message[message_cursor:])
         rest_buffer := cryptobuffer_from_slice(payload_buffer)
-        payload_buffer, payload_status := symmetricstate_DecryptAndHash(&self.symmetricstate, rest_buffer)
+        payload_buffer, _, payload_status := symmetricstate_DecryptAndHash(&self.symmetricstate, rest_buffer)
         if payload_status != .Ok {
             return {},{},{}, payload_status
         }
@@ -1149,12 +1154,18 @@ random_psk :: proc() -> [32]u8 {
     return psk
 }
 
+from_le_bytes :: proc(slice: []u8) -> int {
+    x := int(slice[0] >> 0) + int(slice[1] >> 8) + int(slice[2] >> 16) + int(slice[3] >> 24) + int(slice[4] >> 32) + int(slice[5] >> 40) + int(slice[6] >> 48) + int(slice[7] >> 56);
+    return x
+}
 
 cryptobuffer_from_slice :: proc(slice: []u8) -> CryptoBuffer {
-    assert(len(slice) > 16)
-    length := len(slice)-16
+    assert(len(slice) > 24)
+    nonce := u64(from_le_bytes(slice[:8]))
+    length := len(slice)-24
     return CryptoBuffer{
-        main_body = slice[:len(slice)-16],
+        nonce = nonce,
+        main_body = slice[:len(slice)-24],
         tag = {slice[length +0], slice[length +1], slice[length +2], slice[length +3],
                 slice[length +4], slice[length +5], slice[length +6], slice[length +7],
                 slice[length +8], slice[length +9], slice[length +10],slice[length +11],

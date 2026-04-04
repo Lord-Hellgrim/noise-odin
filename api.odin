@@ -80,32 +80,36 @@ responder_step :: proc(handshakestate: ^HandshakeState, input_message: []u8, pay
 }
 
 // This function will overwrite "data" with the encrypted data
-prepare_message :: proc(cstates: ^CipherStates, data: []u8) -> (CryptoBuffer, NoiseStatus) {
+prepare_message :: proc(cstates: ^CipherStates, data: []u8) -> (CryptoBuffer, u64, NoiseStatus) {
     result : CryptoBuffer
     status : NoiseStatus
+    nonce : u64
     switch cstates.initiator {
         case true: {
+            nonce = cstates.c1_i_to_r.n
             result, status = internals.cipherstate_EncryptWithAd(&cstates.c1_i_to_r, nil, data)
         }
         case false: {
+            nonce = cstates.c2_r_to_i.n
             result, status = internals.cipherstate_EncryptWithAd(&cstates.c2_r_to_i, nil, data)
         }
     }
-    return result, status
+    return result, nonce, status
 }
 
 // This function will overwrite the "encrypted_message" with the decrypted data
-open_message :: proc(cstates: ^CipherStates, encrypted_message: CryptoBuffer) -> ([]u8, NoiseStatus) {
+open_message :: proc(cstates: ^CipherStates, encrypted_message: CryptoBuffer) -> ([]u8, u64, NoiseStatus) {
     result : []u8
     status : NoiseStatus
+    nonce : u64
     switch cstates.initiator {
         case true: {
-            result, status = internals.cipherstate_DecryptWithAd(&cstates.c2_r_to_i, nil, encrypted_message)
+            result, nonce, status = internals.cipherstate_DecryptWithAd(&cstates.c2_r_to_i, nil, encrypted_message)
         }
         case false: {
-            result, status = internals.cipherstate_DecryptWithAd(&cstates.c1_i_to_r, nil, encrypted_message)
+            result, nonce, status = internals.cipherstate_DecryptWithAd(&cstates.c1_i_to_r, nil, encrypted_message)
         }
     }
-    return result, status
+    return result, nonce, status
 }
 
