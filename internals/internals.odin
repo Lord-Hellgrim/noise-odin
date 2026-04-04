@@ -144,18 +144,10 @@ DEFAULT_PROTOCOL :: Protocol {
     hash = .SHA256
 }
 
-ERROR_PROTOCOL :: Protocol {
-    handshake_pattern = nil,
-    dh = nil,
-    cipher = nil,
-    hash = nil
-}
-
-
 parse_protocol_string :: proc (protocol_string: string) -> (Protocol, NoiseStatus) {
     
     if len(protocol_string) > 255 {
-        return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
+        return {}, .Protocol_could_not_be_parsed
     }
 
     protocol : Protocol
@@ -170,7 +162,7 @@ parse_protocol_string :: proc (protocol_string: string) -> (Protocol, NoiseStatu
     }
 
     if count != 4 {
-        return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
+        return {}, .Protocol_could_not_be_parsed
     }
 
     switch protocol_string[underline[0]+1 : underline[1]] {
@@ -207,19 +199,19 @@ parse_protocol_string :: proc (protocol_string: string) -> (Protocol, NoiseStatu
         case "IKpsk1": protocol.handshake_pattern = .IKpsk1
         case "IKpsk2": protocol.handshake_pattern = .IKpsk2
         case "IXpsk2": protocol.handshake_pattern = .IXpsk2
-        case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
+        case: return {}, .Protocol_could_not_be_parsed
     }
 
     switch protocol_string[underline[1]+1 : underline[2]] {
         case "25519": protocol.dh = .X25519
         case "448": protocol.dh = .X448
-        case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
+        case: return {}, .Protocol_could_not_be_parsed
     }
 
     switch protocol_string[underline[2]+1 : underline[3]] {
         case "AESGCM": protocol.cipher = .AES256gcm
         case "ChaChaPoly": protocol.cipher = .ChaChaPoly
-        case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
+        case: return {}, .Protocol_could_not_be_parsed
     }
 
     switch protocol_string[underline[3]+1 : ] {
@@ -227,7 +219,7 @@ parse_protocol_string :: proc (protocol_string: string) -> (Protocol, NoiseStatu
         case "SHA256": protocol.hash = .SHA256
         case "Blake2s": protocol.hash = .Blake2s
         case "Blake2b": protocol.hash = .Blake2b
-        case: return ERROR_PROTOCOL, .Protocol_could_not_be_parsed
+        case: return {}, .Protocol_could_not_be_parsed
     }
 
     return protocol, .Ok

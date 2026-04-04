@@ -1,12 +1,13 @@
 package noise
 
 import "internals"
+import "core:fmt"
 
 
 /// This file defines the API for the noise protocol package. You should never need to call an internals procedure
 /// or use an internals type.
 
-/// In general, to complete a noise handshake you must:
+/// In general, to complete a noise handshake you must first create a handshakestate with your desired protocol and then:
 ///     If you are initiating the connection, call initiator_step passing nil to the input_message parameter.
 ///     Send the resulting []u8 to the responder (genrally a server) with the stream method of your choice (see examples)
 ///     if the status code of the initiator_step call was .Handshake_Complete, you will have received a valid Cipherstates

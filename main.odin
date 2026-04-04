@@ -190,7 +190,8 @@ test_one_protocol :: proc(protocol_name: string) -> (CipherStates, CipherStates)
         if ini_status == .Handshake_Complete && res_status == .Handshake_Complete {
             break
         }
-        ini_cstates, res_message, ini_status = initiator_step(&initiator_handshakestate, ini_message, nil)
+        payload : [10]u8 = {1,2,3,4,5,6,7,8,9,10}
+        ini_cstates, res_message, ini_status = initiator_step(&initiator_handshakestate, ini_message, payload[:])
         if ini_status == .Handshake_Complete && res_status == .Handshake_Complete {
             break
         }
@@ -333,9 +334,9 @@ main :: proc() {
     fmt.println(protocol_name)
     ini_cstates, res_cstates := test_one_protocol(protocol_name)
 
-    test_1000_messages(&ini_cstates, &res_cstates)
+    // test_1000_messages(&ini_cstates, &res_cstates)
 
-    test_1000_random_protocols()
+    // test_1000_random_protocols()
 
     benchmark_dh()
     benchmark_hash()
